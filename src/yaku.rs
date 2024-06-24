@@ -23,7 +23,7 @@ pub enum Yaku {
 
     // based on terminal/honor
     Tanyao,         // no honor or terminal                     1 han
-    Yakuhai(u8),     // triplets or quads of dragons,           1 han per triplet
+    Yakuhai(i8),     // triplets or quads of dragons,           1 han per triplet
                     // seat winds, or round winds. Round+Seat wind counts for double.
     Chanta,         // each sequence/meld contains a terminal   2 han closed / 1 han open
                     // or honor tile
