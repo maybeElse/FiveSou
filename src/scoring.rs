@@ -1,16 +1,14 @@
 use crate::errors::errors::{ScoringError, ParsingError, ValueError};
 use crate::yaku::{Yaku, YakuSpecial, WinType};
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Payment{
     DealerTsumo(i32),
     Tsumo(PaymentSplit),
     Ron(i32)
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct PaymentSplit{
     pub dealer: i32,
     pub non_dealer: i32,

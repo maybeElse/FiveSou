@@ -1,9 +1,9 @@
 use crate::errors::errors::{ScoringError, ParsingError};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum WinType {Tsumo, Ron,}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Yaku {
     Chitoi,         // unique shape, fully closed hand          2 han closed
     ClosedTsumo,    // tsumo, fully closed hand                 1 han closed
@@ -62,7 +62,7 @@ pub enum Yaku {
                     // I think that breaking this out into a unique criteria will simplify code somewhat
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum YakuSpecial {
     Riichi,         // declared Riichi, fully closed hand       1 han closed
     DoubleRiichi,   // declared Riichi on first turn            2 han closed
@@ -77,3 +77,5 @@ pub enum YakuSpecial {
     Tenho,          // blessing of heaven. tsumo.               limit   closed, dealer only
     Chiho,          // blessing of earth. tsumo.                limit   closed, non-dealer only
 }
+
+

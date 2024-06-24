@@ -98,38 +98,32 @@ impl FromChar for Suit {
     }
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Tile {
     Simple(SimpleTile),
     Honor(HonorTile),
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct SimpleTile {
     pub suit: Suit,
     pub number: i8,
     pub red: bool,
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum HonorTile {
     Dragon(DragonTile),
     Wind(WindTile)
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Suit {Man, Sou, Pin,}
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum DragonTile {White, Green, Red,}
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum WindTile {East, South, West, North,}
 
 mod tests {
