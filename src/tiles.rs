@@ -185,34 +185,22 @@ impl DoraOf for Tile {
 
 #[derive(Debug, PartialEq)]
 pub enum Meld {
-    Triplet(Triplet),
-    Sequence(Sequence),
-    Kan(Kan),
-    Pair(Pair)
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Triplet {
-    pub open: bool,
-    pub tile: Tile
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Sequence {
-    pub open: bool,
-    pub tiles: [Tile; 3]
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Kan {
-    pub open: bool,
-    pub tile: Tile
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Pair {
-    pub open: bool,
-    pub tile: Tile
+    Triplet{
+        open: bool,
+        tile: Tile
+    },
+    Sequence{
+        open: bool,
+        tiles: [Tile; 3]
+    },
+    Kan{
+        open: bool,
+        tile: Tile
+    },
+    Pair{
+        open: bool,
+        tile: Tile
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
