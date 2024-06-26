@@ -41,7 +41,7 @@ pub fn count_han(
     for yaku in yaku_normal {
         match yaku {
             // special criteria
-            Yaku::Chitoi => han_count += 2,
+            Yaku::Chiitoi => han_count += 2,
 
             // based on luck
             Yaku::ClosedTsumo => han_count += 1,
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn han_counts(){
         assert_eq!(count_han(
-            vec![Yaku::Chitoi],
+            vec![Yaku::Chiitoi],
             vec![YakuSpecial::Riichi],
             0, true).unwrap(), 3)
     }
