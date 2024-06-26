@@ -98,24 +98,24 @@ impl FromChar for Suit {
     }
 }
 
-trait TileHelpers {
-    fn is_terminal(self: &Self) -> bool;
-    fn adjacent_all(self: &Self) -> Vec<[Tile; 2]>;
-    fn adjacent_up(self: &Self) -> Option<[Tile; 2]>;
-    fn adjacent_down(self: &Self) -> Option<[Tile; 2]>;
-    fn adjacent_around(self: &Self) -> Option<[Tile; 2]>;
-    fn adjacent(self: &Self, one: i8, two: i8) -> [Tile; 2];
+pub trait TileHelpers {
+    fn is_terminal(&self) -> bool;
+    fn adjacent_all(&self) -> Vec<[Tile; 2]>;
+    fn adjacent_up(&self) -> Option<[Tile; 2]>;
+    fn adjacent_down(&self) -> Option<[Tile; 2]>;
+    fn adjacent_around(&self) -> Option<[Tile; 2]>;
+    fn adjacent(&self, one: i8, two: i8) -> [Tile; 2];
 }
 
 impl TileHelpers for NumberTile {
-    fn is_terminal(self: &Self) -> bool {
+    fn is_terminal(&self) -> bool {
         match self.number {
             1 | 9 => true,
             _ => false,
         }
     }
 
-    fn adjacent_all(self: &Self) -> Vec<[Tile; 2]> {
+    fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
         let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
         let mut vec: Vec<[Tile; 2]> = vec![];
         for element in arr.iter() {
@@ -124,28 +124,28 @@ impl TileHelpers for NumberTile {
         vec
     }
 
-    fn adjacent_up(self: &Self) -> Option<[Tile; 2]> {
+    fn adjacent_up(&self)  -> Option<[Tile; 2]> {
         match self.number {
             8 | 9 => None,
             _ => Some(self.adjacent(1, 2))
         }
     }
 
-    fn adjacent_down(self: &Self) -> Option<[Tile; 2]> {
+    fn adjacent_down(&self)  -> Option<[Tile; 2]> {
         match self.number {
             1 | 2 => None,
             _ => Some(self.adjacent(-1, -2))
         }
     }
 
-    fn adjacent_around(self: &Self) -> Option<[Tile; 2]> {
+    fn adjacent_around(&self)  -> Option<[Tile; 2]> {
         match self.number {
             1 | 9 => None,
             _ => Some(self.adjacent(-1, 1))
         }
     }
 
-    fn adjacent(self: &Self, one: i8, two: i8) -> [Tile; 2] {
+    fn adjacent(&self, one: i8, two: i8) -> [Tile; 2] {
         let adj: [Tile; 2] = [
             Tile::Number(NumberTile{suit: self.suit, number: self.number + one, red: false}),
             Tile::Number(NumberTile{suit: self.suit, number: self.number + two, red: false})
