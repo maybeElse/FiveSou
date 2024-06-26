@@ -183,6 +183,29 @@ impl DoraOf for Tile {
     }
 }
 
+#[derive(Debug)]
+pub enum Hand {
+    Standard{
+        full_hand: FullHand,
+        winning_tile: Tile,
+        open: bool,
+    },
+    Chiitoi{
+        full_hand: [Pair; 7],
+        winning_tile: Tile,
+    },
+    Kokushi{
+        full_hand: [Tile; 14],
+        winning_tile: Tile,
+    },
+}
+
+#[derive(Debug)]
+pub struct FullHand {
+    melds: [Meld; 4],
+    pair: Pair
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Meld {
     Triplet{
@@ -197,10 +220,12 @@ pub enum Meld {
         open: bool,
         tile: Tile
     },
-    Pair{
-        open: bool,
-        tile: Tile
-    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Pair {
+    open: bool,
+    tile: Tile
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
