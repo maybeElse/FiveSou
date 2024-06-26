@@ -103,6 +103,7 @@ trait TileHelpers {
     fn adjacent_up(self: &Self) -> Option<[Tile; 2]>;
     fn adjacent_down(self: &Self) -> Option<[Tile; 2]>;
     fn adjacent_around(self: &Self) -> Option<[Tile; 2]>;
+    fn adjacent(self: &Self, one: i8, two: i8) -> [Tile; 2];
 }
 
 impl TileHelpers for SimpleTile {
@@ -117,40 +118,30 @@ impl TileHelpers for SimpleTile {
     fn adjacent_up(self: &Self) -> Option<[Tile; 2]> {
         match self.number {
             8 | 9 => None,
-            _ => {
-                let adj: [Tile; 2] = [
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number + 1, red: false}),
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number + 2, red: false})
-                ];
-                Some(adj)
-            }
+            _ => Some(self.adjacent(1, 2))
         }
     }
 
     fn adjacent_down(self: &Self) -> Option<[Tile; 2]> {
         match self.number {
             1 | 2 => None,
-            _ => {
-                let adj: [Tile; 2] = [
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number - 1, red: false}),
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number - 2, red: false})
-                ];
-                Some(adj)
-            }
+            _ => Some(self.adjacent(-1, -2))
         }
     }
 
     fn adjacent_around(self: &Self) -> Option<[Tile; 2]> {
         match self.number {
             1 | 9 => None,
-            _ => {
-                let adj: [Tile; 2] = [
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number + 1, red: false}),
-                    Tile::Simple(SimpleTile{suit: self.suit, number: self.number - 1, red: false})
-                ];
-                Some(adj)
-            }
+            _ => Some(self.adjacent(-1, 1))
         }
+    }
+
+    fn adjacent(self: &Self, one: i8, two: i8) -> [Tile; 2] {
+        let adj: [Tile; 2] = [
+            Tile::Simple(SimpleTile{suit: self.suit, number: self.number + one, red: false}),
+            Tile::Simple(SimpleTile{suit: self.suit, number: self.number + two, red: false})
+        ];
+        adj
     }
 }
 
