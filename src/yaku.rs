@@ -5,7 +5,7 @@ pub enum WinType {Tsumo, Ron,}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Yaku {
-    Chitoi,         // unique shape, fully closed hand          2 han closed
+    Chiitoi,         // unique shape, fully closed hand          2 han closed
     ClosedTsumo,    // tsumo, fully closed hand                 1 han closed
 
     // based on sequence
@@ -62,6 +62,9 @@ pub enum Yaku {
                     // I think that breaking this out into a unique criteria will simplify code somewhat
 }
 
+static YAKUMAN: [Yaku; 11] = [Yaku::Kokushi, Yaku::Suanko, Yaku::Daisangen, Yaku::Shosushi, Yaku::Daisushi, Yaku::Tsuiso, 
+                                Yaku::Chinroto, Yaku::Ryuiso, Yaku::ChurenPoto, Yaku::Sukantsu, Yaku::SpecialWait];
+
 #[derive(Debug, PartialEq)]
 pub enum YakuSpecial {
     Riichi,         // declared Riichi, fully closed hand       1 han closed
@@ -78,4 +81,71 @@ pub enum YakuSpecial {
     Chiho,          // blessing of earth. tsumo.                limit   closed, non-dealer only
 }
 
+// some yaku are mutually exclusive; for instance, Ipeiko cannot coexist with Ryanpeiko
+// hopefully my yaku-identification logic will handle this, but just in case ...
+// see https://riichi.wiki/Yaku_compatibility
+pub trait PushYakuChecked {
+    fn push_checked(&mut self, yaku: Yaku);
+    fn contains_any(&self, yaku: &Vec<Yaku>) -> bool;
+}
+impl PushYakuChecked for Vec<Yaku> {
+    fn push_checked(&mut self, yaku: Yaku) {
+        if self.contains_any(&YAKUMAN.to_vec()) && !YAKUMAN.contains(&yaku) {
+            // don't add anything except another yakuman if a yakuman is already present
+        } else {
+            match yaku {
+                Yaku::Suanko | Yaku::Daisangen | Yaku::Shosushi | Yaku::Daisushi | Yaku::Tsuiso
+                    | Yaku::Chinroto | Yaku::Ryuiso | Yaku::ChurenPoto | Yaku::Sukantsu => {
+                    
+                }
+                Yaku::Ipeiko => {
+                    if self.contains(&Yaku::Ryanpeiko) {
+                    } else if self.contains(&Yaku::Ipeiko) {
+                        self.retain(|x| *x != Yaku::Ipeiko);
+                        self.push(Yaku::Ryanpeiko);
+                    }
+                },
+                Yaku::Ryanpeiko => {
+                    if self.contains(&Yaku::Ipeiko) {
+                        self.retain(|x| *x != Yaku::Ipeiko);
+                    }
+                    self.push(yaku);
+                },
+                _ => { self.push(yaku); }
+            }
+        }
+    }
 
+    fn contains_any(&self, list: &Vec<Yaku>) -> bool {
+        for yaku in list {
+            if self.contains(yaku) {
+                return true
+            }
+        }
+        false
+    }
+} 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn han_counts(){
+        let mut yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Pinfu);
+        assert_eq!(yaku, vec![Yaku::Ipeiko, Yaku::Pinfu]);
+
+        yaku = vec![Yaku::Yakuhai(2)];
+        yaku.push_checked(Yaku::Shosangen);
+        assert_eq!(yaku, vec![Yaku::Yakuhai(2), Yaku::Shosangen]);
+
+        yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Ryanpeiko);
+        assert_eq!(yaku, vec![Yaku::Ryanpeiko]);
+
+        yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Ipeiko);
+        assert_eq!(yaku, vec![Yaku::Ryanpeiko]);
+    }
+}
