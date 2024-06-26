@@ -100,6 +100,7 @@ impl FromChar for Suit {
 
 trait TileHelpers {
     fn is_terminal(self: &Self) -> bool;
+    fn adjacent_all(self: &Self) -> Vec<[Tile; 2]>;
     fn adjacent_up(self: &Self) -> Option<[Tile; 2]>;
     fn adjacent_down(self: &Self) -> Option<[Tile; 2]>;
     fn adjacent_around(self: &Self) -> Option<[Tile; 2]>;
@@ -107,12 +108,20 @@ trait TileHelpers {
 }
 
 impl TileHelpers for SimpleTile {
-
     fn is_terminal(self: &Self) -> bool {
         match self.number {
             1 | 9 => true,
             _ => false,
         }
+    }
+
+    fn adjacent_all(self: &Self) -> Vec<[Tile; 2]> {
+        let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
+        let mut vec: Vec<[Tile; 2]> = vec![];
+        for element in arr.iter() {
+            if element.is_some() { vec.push(element.unwrap()) }
+        }
+        vec
     }
 
     fn adjacent_up(self: &Self) -> Option<[Tile; 2]> {
@@ -267,5 +276,34 @@ mod tests {
                 Tile::Honor(HonorTile::Wind(WindTile::East)),
                 Tile::Honor(HonorTile::Wind(WindTile::East)),
             ]);
+    }
+
+    #[test]
+    fn test_dora(){
+        assert_eq!(Tile::Honor(HonorTile::Dragon(DragonTile::Green)).dora_of(), Tile::Honor(HonorTile::Dragon(DragonTile::Red)));
+        assert_eq!(Tile::Honor(HonorTile::Wind(WindTile::North)).dora_of(), Tile::Honor(HonorTile::Wind(WindTile::East)));
+        assert_eq!(Tile::Simple(SimpleTile{suit: Suit::Sou, number: 1, red: false}).dora_of(), Tile::Simple(SimpleTile{suit: Suit::Sou, number: 2, red: false}));
+        assert_eq!(Tile::Simple(SimpleTile{suit: Suit::Sou, number: 9, red: false}).dora_of(), Tile::Simple(SimpleTile{suit: Suit::Sou, number: 1, red: false}));
+    }
+
+    #[test]
+    fn test_adjacent(){
+        assert_eq!(SimpleTile{suit: Suit::Sou, number: 1, red: false}.adjacent_all(), 
+            vec![[Tile::from_string("s2").unwrap(), Tile::from_string("s3").unwrap()]]);
+        assert_eq!(SimpleTile{suit: Suit::Sou, number: 2, red: false}.adjacent_all(), 
+            vec![[Tile::from_string("s3").unwrap(), Tile::from_string("s4").unwrap()],
+                 [Tile::from_string("s1").unwrap(), Tile::from_string("s3").unwrap()]
+            ]);
+        assert_eq!(SimpleTile{suit: Suit::Sou, number: 5, red: false}.adjacent_all(), 
+            vec![[Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()],
+                 [Tile::from_string("s4").unwrap(), Tile::from_string("s6").unwrap()],
+                 [Tile::from_string("s4").unwrap(), Tile::from_string("s3").unwrap()]
+            ]);
+        assert_eq!(SimpleTile{suit: Suit::Sou, number: 8, red: false}.adjacent_all(), 
+            vec![[Tile::from_string("s7").unwrap(), Tile::from_string("s9").unwrap()],
+                 [Tile::from_string("s7").unwrap(), Tile::from_string("s6").unwrap()]
+            ]);
+        assert_eq!(SimpleTile{suit: Suit::Sou, number: 9, red: false}.adjacent_all(), 
+            vec![[Tile::from_string("s8").unwrap(), Tile::from_string("s7").unwrap()]]);
     }
 }
