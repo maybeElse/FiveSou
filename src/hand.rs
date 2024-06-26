@@ -1,3 +1,4 @@
+use crate::tiles::TileHelpers;
 use crate::tiles::{Tile, NumberTile, HonorTile, DragonTile, WindTile, Suit};
 use crate::errors::errors::{ScoringError, ParsingError};
 
@@ -55,9 +56,13 @@ impl HandHelpers for FullHand {
         None
     }
     fn has_any_honor(&self) -> bool {
-        if self.pair.tile == Tile::HonorTile || self.melds.
+        //if self.pair.tile == Tile::HonorTile || self.melds.
+        false
     }
     fn has_any_terminal(&self) -> bool {
+        false
+    }
+    fn has_any_simple(&self) -> bool {
         false
     }
 }
@@ -73,20 +78,74 @@ trait MeldHelpers {
     fn has_terminal(&self) -> bool;
 }
 
+impl MeldHelpers for Meld {
+    fn has_honor(&self) -> bool{
+        match self {
+            Meld::Triplet(trip) => {
+                match trip.tile {
+                    Tile::Honor(_) => true,
+                    _ => false
+                }
+            },
+            Meld::Kan(kan) => {
+                match kan.tile {
+                    Tile::Honor(_) => true,
+                    _ => false
+                }
+            },
+            _ => false,
+        }
+    }
+    fn has_terminal(&self) -> bool{
+        match self {
+            Meld::Sequence(seq) => {
+                for tile in seq.tiles {
+                    if tile.is_terminal() {
+                        return true
+                    }
+                }
+                false
+            },
+            Meld::Kan(kan) => {
+                match kan.tile {
+                    Tile::Number(tile) => tile.is_terminal(),
+                    _ => false
+                }
+            },
+            Meld::Triplet(trip) => {
+                match trip.tile {
+                    Tile::Number(tile) => tile.is_terminal(),
+                    _ => false
+                }
+            },
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Meld {
-    Triplet{
-        open: bool,
-        tile: Tile
-    },
-    Sequence{
-        open: bool,
-        tiles: [Tile; 3]
-    },
-    Kan{
-        open: bool,
-        tile: Tile
-    },
+    Triplet(Triplet),
+    Sequence(Sequence),
+    Kan(Kan),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Triplet{
+    open: bool,
+    tile: Tile
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Sequence{
+    open: bool,
+    tiles: [NumberTile; 3]
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Kan{
+    open: bool,
+    tile: Tile
 }
 
 #[derive(Debug, PartialEq)]
