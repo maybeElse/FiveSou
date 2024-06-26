@@ -209,7 +209,14 @@ pub enum Tile {
     Honor(HonorTile),
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+impl PartialEq for SimpleTile {
+    fn eq(&self, other: &Self) -> bool {
+        // ignore whether tiles are red for checking equality
+        self.suit == other.suit && self.number == other.number
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct SimpleTile {
     pub suit: Suit,
     pub number: i8,
