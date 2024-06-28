@@ -1,9 +1,6 @@
 use crate::errors::errors::{ScoringError, ParsingError};
     
-trait FromString {
-    fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;
-    
-}
+trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
 trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
 trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
 
@@ -23,13 +20,26 @@ impl FromString for Tile {
         match v.len() {
             3 => {
                 match v[0] {
-                    'p' | 'm' | 's' => Ok(Tile::Number(NumberTile::from_string(str).unwrap())),
+                    'p' | 'm' | 's' => {
+                        { Ok(Tile::Number{
+                            suit: Suit::from_char(v[0])?,
+                            number: (v[1] as i8) - 48,
+                            red: {if v.get(2) == Some(&'r') { true } else { false }}
+                        })}
+                    },
                     _ => Err(ScoringError::ParseError(ParsingError::BadString)),
                 }},
             2 => {
                 match v[0] {
-                    'd' | 'w' => Ok(Tile::Honor(HonorTile::from_string(str).unwrap())),
-                    'p' | 'm' | 's' => Ok(Tile::Number(NumberTile::from_string(str).unwrap())),
+                    'd' => { Ok(Tile::Dragon(Dragon::from_char(v[1]).unwrap())) }
+                    'w' => { Ok(Tile::Wind(Wind::from_char(v[1]).unwrap())) },
+                    'p' | 'm' | 's' => {
+                        { Ok(Tile::Number{
+                            suit: Suit::from_char(v[0])?,
+                            number: (v[1] as i8) - 48,
+                            red: false
+                        })}
+                    },
                     _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
                 }},
             _ => Err(ScoringError::ParseError(ParsingError::BadString)),
@@ -37,51 +47,24 @@ impl FromString for Tile {
     }
 }
 
-impl FromString for NumberTile {
-    fn from_string(str: &str) -> Result<Self, ScoringError> {
-        let v: Vec<char> = str.chars().collect();
-        let i: i8 = (v[1] as i8) - 48;
-        if !(i > 0 && i <= 9) {
-            Err(ScoringError::ParseError(ParsingError::BadInteger))
-        } else {
-            Ok(NumberTile{
-                suit: Suit::from_char(v[0])?,
-                number: i,
-                red: {if v.get(2) == Some(&'r') { true } else { false }},
-            })
-        }
-    }
-}
-
-impl FromString for HonorTile {
-    fn from_string(str: &str) -> Result<Self, ScoringError> {
-        let v: Vec<char> = str.chars().collect();
-        match v[0] {
-            'd' => Ok(HonorTile::Dragon(DragonTile::from_char(v[1]).unwrap())),
-            'w' => Ok(HonorTile::Wind(WindTile::from_char(v[1]).unwrap())),
+impl FromChar for Dragon {
+    fn from_char(char: char) -> Result<Self, ScoringError> {
+        match char {
+            'r' => Ok(Dragon::Red),
+            'w' => Ok(Dragon::White),
+            'g' => Ok(Dragon::Green),
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
         }
     }
 }
 
-impl FromChar for DragonTile {
+impl FromChar for Wind {
     fn from_char(char: char) -> Result<Self, ScoringError> {
         match char {
-            'r' => Ok(DragonTile::Red),
-            'w' => Ok(DragonTile::White),
-            'g' => Ok(DragonTile::Green),
-            _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
-        }
-    }
-}
-
-impl FromChar for WindTile {
-    fn from_char(char: char) -> Result<Self, ScoringError> {
-        match char {
-            'e' => Ok(WindTile::East),
-            's' => Ok(WindTile::East),
-            'w' => Ok(WindTile::East),
-            'n' => Ok(WindTile::East),
+            'e' => Ok(Wind::East),
+            's' => Ok(Wind::East),
+            'w' => Ok(Wind::East),
+            'n' => Ok(Wind::East),
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
         }
     }
@@ -100,18 +83,25 @@ impl FromChar for Suit {
 
 pub trait TileHelpers {
     fn is_terminal(&self) -> bool;
+    fn is_honor(&self) -> bool;
     fn adjacent_all(&self) -> Vec<[Tile; 2]>;
     fn adjacent_up(&self) -> Option<[Tile; 2]>;
     fn adjacent_down(&self) -> Option<[Tile; 2]>;
     fn adjacent_around(&self) -> Option<[Tile; 2]>;
-    fn adjacent(&self, one: i8, two: i8) -> [Tile; 2];
+    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
 }
 
-impl TileHelpers for NumberTile {
+impl TileHelpers for Tile {
     fn is_terminal(&self) -> bool {
-        match self.number {
-            1 | 9 => true,
-            _ => false,
+        match self {Tile::Number {suit, number, red} => {
+                if *number == 1 as i8 || *number == 9 as i8 { true } else { false }},
+            _ => false,}
+    }
+
+    fn is_honor(&self) -> bool {
+        match self {
+            Tile::Number {suit, number, red} => false,
+            _ => true
         }
     }
 
@@ -125,30 +115,36 @@ impl TileHelpers for NumberTile {
     }
 
     fn adjacent_up(&self)  -> Option<[Tile; 2]> {
-        match self.number {
-            8 | 9 => None,
-            _ => Some(self.adjacent(1, 2))
-        }
+        match self {Tile::Number {suit, number, red} => {
+            match number {
+                8 | 9 => None,
+                _ => Some(Self::adjacent(*suit, *number, 1, 2))
+            }},
+            _ => panic!("unreachable code in adjacent_up"),}
     }
 
     fn adjacent_down(&self)  -> Option<[Tile; 2]> {
-        match self.number {
-            1 | 2 => None,
-            _ => Some(self.adjacent(-1, -2))
-        }
+        match self {Tile::Number {suit, number, red} => {
+            match number {
+                1 | 2 => None,
+                _ => Some(Self::adjacent(*suit, *number, -1, -2))
+            }},
+            _ => panic!("unreachable code in adjacent_down"),}
     }
 
     fn adjacent_around(&self)  -> Option<[Tile; 2]> {
-        match self.number {
-            1 | 9 => None,
-            _ => Some(self.adjacent(-1, 1))
-        }
+        match self {Tile::Number {suit, number, red} => {
+            match number {
+                1 | 9 => None,
+                _ => Some(Self::adjacent(*suit, *number, -1, 1))
+            }},
+            _ => panic!("unreachable code in adjacent_around"),}
     }
 
-    fn adjacent(&self, one: i8, two: i8) -> [Tile; 2] {
+    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2] {
         let adj: [Tile; 2] = [
-            Tile::Number(NumberTile{suit: self.suit, number: self.number + one, red: false}),
-            Tile::Number(NumberTile{suit: self.suit, number: self.number + two, red: false})
+            Tile::Number{suit: suit, number: number + one, red: false},
+            Tile::Number{suit: suit, number: number + two, red: false}
         ];
         adj
     }
@@ -161,22 +157,65 @@ trait DoraOf {
 impl DoraOf for Tile {
     fn dora_of (self: &Self) -> Tile {
         match self {
-            Tile::Number(simp) => {
-                if simp.number == 9 {
-                    Tile::Number(NumberTile{suit: simp.suit, number: 1, red: false})
+            Tile::Number {suit, number, red} => {
+                if *number == 9 as i8 {
+                    Tile::Number{suit: *suit, number: 1, red: false}
                 } else {
-                    Tile::Number(NumberTile{suit: simp.suit, number: simp.number + 1, red: false})
+                    Tile::Number{suit: *suit, number: number + 1, red: false}
                 }
             },
-            Tile::Honor(hon) => {
-                match hon { // there should be a better way to do this
-                    HonorTile::Dragon(DragonTile::White) => Tile::Honor(HonorTile::Dragon(DragonTile::Green)),
-                    HonorTile::Dragon(DragonTile::Green) => Tile::Honor(HonorTile::Dragon(DragonTile::Red)),
-                    HonorTile::Dragon(DragonTile::Red) => Tile::Honor(HonorTile::Dragon(DragonTile::White)),
-                    HonorTile::Wind(WindTile::East) => Tile::Honor(HonorTile::Wind(WindTile::South)),
-                    HonorTile::Wind(WindTile::South) => Tile::Honor(HonorTile::Wind(WindTile::West)),
-                    HonorTile::Wind(WindTile::West) => Tile::Honor(HonorTile::Wind(WindTile::North)),
-                    HonorTile::Wind(WindTile::North) => Tile::Honor(HonorTile::Wind(WindTile::East)),
+            Tile::Dragon(dragon) => {
+                match dragon {
+                    Dragon::White => Tile::Dragon(Dragon::Green),
+                    Dragon::Green => Tile::Dragon(Dragon::Red),
+                    Dragon::Red => Tile::Dragon(Dragon::White),
+                    
+                }
+            },
+            Tile::Wind(wind) => {
+                match wind {
+                    Wind::East => Tile::Wind(Wind::South),
+                    Wind::South => Tile::Wind(Wind::West),
+                    Wind::West => Tile::Wind(Wind::North),
+                    Wind::North => Tile::Wind(Wind::East),
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Tile {
+    Number{
+        suit: Suit,
+        number: i8,
+        red: bool
+    },
+    Dragon(Dragon),
+    Wind(Wind)
+}
+
+impl PartialEq for Tile {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Tile::Wind(val1) => {
+                match other {
+                    Tile::Wind(val2) => val1 == val2,
+                    _ => false,
+                }},
+            Tile::Dragon(val1) => {
+                match other {
+                    Tile::Dragon(val2) => val1 == val2,
+                    _ => false,
+                }},
+            Tile::Number {suit, number, red} => {
+                let s1 = suit;
+                let n1 = number;
+                match other {
+                    Tile::Number {suit, number, red} => {
+                        s1 == suit && n1 == number
+                    },
+                    _ => false,
                 }
             }
         }
@@ -184,101 +223,75 @@ impl DoraOf for Tile {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Tile {
-    Number(NumberTile),
-    Honor(HonorTile),
-}
-
-impl PartialEq for NumberTile {
-    fn eq(&self, other: &Self) -> bool {
-        // ignore whether tiles are red for checking equality
-        self.suit == other.suit && self.number == other.number
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NumberTile {
-    pub suit: Suit,
-    pub number: i8,
-    pub red: bool,
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum HonorTile {
-    Dragon(DragonTile),
-    Wind(WindTile)
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Suit {Man, Sou, Pin,}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum DragonTile {White, Green, Red,}
+pub enum Dragon {White, Green, Red,}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum WindTile {East, South, West, North,}
+pub enum Wind {East, South, West, North,}
 
 mod tests {
     use super::*;
 
     #[test]
     fn string_to_tiles(){
-        assert_eq!(make_tiles_from_string("m1").unwrap(), vec![Tile::Number(NumberTile{suit: Suit::Man, number: 1, red: false})]);
+        assert_eq!(make_tiles_from_string("m1").unwrap(), vec![Tile::Number{suit: Suit::Man, number: 1, red: false}]);
         assert_eq!(make_tiles_from_string("m3,m2,m1").unwrap(), 
-            vec![Tile::Number(NumberTile{suit: Suit::Man, number: 1, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Man, number: 2, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Man, number: 3, red: false})]);
+            vec![Tile::Number{suit: Suit::Man, number: 1, red: false},
+                Tile::Number{suit: Suit::Man, number: 2, red: false},
+                Tile::Number{suit: Suit::Man, number: 3, red: false}]);
         assert_eq!(make_tiles_from_string("we,dw,s2").unwrap(), 
-            vec![Tile::Honor(HonorTile::Dragon(DragonTile::White)),
-                Tile::Number(NumberTile{suit: Suit::Sou, number: 2, red: false}),
-                Tile::Honor(HonorTile::Wind(WindTile::East)),]);
+            vec![Tile::Dragon(Dragon::White),
+                Tile::Number{suit: Suit::Sou, number: 2, red: false},
+                Tile::Wind(Wind::East),]);
         assert_eq!(make_tiles_from_string("s5,s5r,s5").unwrap(), 
-            vec![Tile::Number(NumberTile{suit: Suit::Sou, number: 5, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Sou, number: 5, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Sou, number: 5, red: true})]);
+            vec![Tile::Number{suit: Suit::Sou, number: 5, red: false},
+                Tile::Number{suit: Suit::Sou, number: 5, red: false},
+                Tile::Number{suit: Suit::Sou, number: 5, red: true}]);
         assert_eq!(make_tiles_from_string("p1,p3,p2,p5r,p4,p6,p7,p8,p9,we,we,we,dr").unwrap(),
-            vec![Tile::Honor(HonorTile::Dragon(DragonTile::Red)),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 1, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 2, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 3, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 4, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 5, red: true}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 6, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 7, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 8, red: false}),
-                Tile::Number(NumberTile{suit: Suit::Pin, number: 9, red: false}),
-                Tile::Honor(HonorTile::Wind(WindTile::East)),
-                Tile::Honor(HonorTile::Wind(WindTile::East)),
-                Tile::Honor(HonorTile::Wind(WindTile::East)),
+            vec![Tile::Dragon(Dragon::Red),
+                Tile::Number{suit: Suit::Pin, number: 1, red: false},
+                Tile::Number{suit: Suit::Pin, number: 2, red: false},
+                Tile::Number{suit: Suit::Pin, number: 3, red: false},
+                Tile::Number{suit: Suit::Pin, number: 4, red: false},
+                Tile::Number{suit: Suit::Pin, number: 5, red: true},
+                Tile::Number{suit: Suit::Pin, number: 6, red: false},
+                Tile::Number{suit: Suit::Pin, number: 7, red: false},
+                Tile::Number{suit: Suit::Pin, number: 8, red: false},
+                Tile::Number{suit: Suit::Pin, number: 9, red: false},
+                Tile::Wind(Wind::East),
+                Tile::Wind(Wind::East),
+                Tile::Wind(Wind::East),
             ]);
     }
 
     #[test]
     fn test_dora(){
-        assert_eq!(Tile::Honor(HonorTile::Dragon(DragonTile::Green)).dora_of(), Tile::Honor(HonorTile::Dragon(DragonTile::Red)));
-        assert_eq!(Tile::Honor(HonorTile::Wind(WindTile::North)).dora_of(), Tile::Honor(HonorTile::Wind(WindTile::East)));
-        assert_eq!(Tile::Number(NumberTile{suit: Suit::Sou, number: 1, red: false}).dora_of(), Tile::Number(NumberTile{suit: Suit::Sou, number: 2, red: false}));
-        assert_eq!(Tile::Number(NumberTile{suit: Suit::Sou, number: 9, red: false}).dora_of(), Tile::Number(NumberTile{suit: Suit::Sou, number: 1, red: false}));
+        assert_eq!(Tile::Dragon(Dragon::Green).dora_of(), Tile::Dragon(Dragon::Red));
+        assert_eq!(Tile::Wind(Wind::North).dora_of(), Tile::Wind(Wind::East));
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.dora_of(), Tile::Number{suit: Suit::Sou, number: 2, red: false});
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.dora_of(), Tile::Number{suit: Suit::Sou, number: 1, red: false});
     }
 
     #[test]
     fn test_adjacent(){
-        assert_eq!(NumberTile{suit: Suit::Sou, number: 1, red: false}.adjacent_all(), 
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s2").unwrap(), Tile::from_string("s3").unwrap()]]);
-        assert_eq!(NumberTile{suit: Suit::Sou, number: 2, red: false}.adjacent_all(), 
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 2, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s3").unwrap(), Tile::from_string("s4").unwrap()],
                  [Tile::from_string("s1").unwrap(), Tile::from_string("s3").unwrap()]
             ]);
-        assert_eq!(NumberTile{suit: Suit::Sou, number: 5, red: false}.adjacent_all(), 
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()],
                  [Tile::from_string("s4").unwrap(), Tile::from_string("s6").unwrap()],
                  [Tile::from_string("s4").unwrap(), Tile::from_string("s3").unwrap()]
             ]);
-        assert_eq!(NumberTile{suit: Suit::Sou, number: 8, red: false}.adjacent_all(), 
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 8, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s7").unwrap(), Tile::from_string("s9").unwrap()],
                  [Tile::from_string("s7").unwrap(), Tile::from_string("s6").unwrap()]
             ]);
-        assert_eq!(NumberTile{suit: Suit::Sou, number: 9, red: false}.adjacent_all(), 
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s8").unwrap(), Tile::from_string("s7").unwrap()]]);
     }
 }

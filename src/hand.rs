@@ -1,10 +1,9 @@
-use crate::tiles::TileHelpers;
-use crate::tiles::{Tile, NumberTile, HonorTile, DragonTile, WindTile, Suit};
+use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::errors::errors::{ScoringError, ParsingError};
 
-fn compose_hand() -> Result<Hand, ScoringError> {
-    Err(ScoringError::Unimplemented)
-}
+///////////////////////
+// structs and enums //
+///////////////////////
 
 #[derive(Debug)]
 pub enum Hand {
@@ -23,37 +22,124 @@ pub enum Hand {
     },
 }
 
-trait HandHelpers {
-    fn count_suits(&self) -> Option<i8>;        // counts how many suits are present
-    fn count_sequences(&self) -> Option<i8>;    // counts how many sequences are present
-    fn count_dora(&self, dora_markers: Vec<Tile>) -> Option<i8>;    // counts how many dora are present
-    fn count_dragons(&self) -> Option<i8>;  // counts dragons (in pair and melds)
-    fn count_winds(&self) -> Option<i8>;    // counts all winds (in pair and melds)
-    fn has_any_honor(&self) -> bool;        // checks for honor tiles
-    fn has_any_terminal(&self) -> bool;     // checks for terminal tiles (1 & 9)
-    fn has_any_simple(&self) -> bool;       // checks for simple tiles (2-8)
+#[derive(Debug)]
+pub struct FullHand {
+    pub melds: [Meld; 4],
+    pub pair: Pair
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Meld {
+    Triplet{
+        open: bool,
+        tile: Tile
+    },
+    Sequence{
+        open: bool,
+        tiles: [Tile; 3]
+    },
+    Kan{
+        open: bool,
+        tile: Tile
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Triplet{
+    pub open: bool,
+    pub tile: Tile
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Sequence{
+    pub open: bool,
+    pub tiles: [Tile; 3]
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Kan{
+    pub open: bool,
+    pub tile: Tile
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Pair {
+    pub open: bool,
+    pub tile: Tile
+}
+
+///////////////
+// functions //
+///////////////
+
+fn compose_hand() -> Result<Hand, ScoringError> {
+    Err(ScoringError::Unimplemented)
+}
+
+////////////
+// traits //
+////////////
+
+pub trait HandTools {
+    fn has_any_honor(&self) -> bool;    // checks for honor tiles
+    fn has_any_terminal(&self) -> bool; // checks for terminal tiles (1 & 9)
+    fn has_any_simple(&self) -> bool;   // checks for simple tiles (2-8)
+}
+
+impl HandTools for Hand {
+    fn has_any_honor(&self) -> bool {
+        false
+    }
+    fn has_any_terminal(&self) -> bool {
+        false
+    }
+    fn has_any_simple(&self) -> bool {
+        false
+    }
+}
+
+
+pub trait HandHelpers {
+    fn count_suits(&self) -> i8;        // counts how many suits are present
+    fn count_sequences(&self) -> i8;    // counts how many sequences are present
+    fn count_triplets(&self) -> i8;     // counts how many triplets are present
+    fn count_kans(&self) -> i8;         // counts how many kans are present
+    fn count_dora(&self, dora_markers: Vec<Tile>) -> i8;    // counts how many dora are present
+    fn count_dragons(&self) -> i8;      // counts dragons (in pair and melds)
+    fn count_winds(&self) -> i8;        // counts all winds (in pair and melds)
+    fn has_any_honor(&self) -> bool;    // checks for honor tiles
+    fn has_any_terminal(&self) -> bool; // checks for terminal tiles (1 & 9)
+    fn has_any_simple(&self) -> bool;   // checks for simple tiles (2-8)
 } 
 
 impl HandHelpers for FullHand {
-    fn count_suits(&self) -> Option<i8> {
+    fn count_suits(&self) -> i8 {
         let mut suits: Vec<Suit> = vec![];
-        None
+        suits.len() as i8
     }
-    fn count_sequences(&self) -> Option<i8> {
+    fn count_sequences(&self) -> i8 {
         let mut seqs: i8 = 0;
-        None
+        seqs
     }
-    fn count_dora(&self, dora_markers: Vec<Tile>) -> Option<i8> {
+    fn count_triplets(&self) -> i8 {
+        let mut trips: i8 = 0;
+        trips
+    }
+    fn count_kans(&self) -> i8 {
+        let mut kans: i8 = 0;
+        kans
+    }
+    fn count_dora(&self, dora_markers: Vec<Tile>) -> i8 {
         let mut dora: i8 = 0;
-        None
+        dora
     }
-    fn count_dragons(&self) -> Option<i8> {
+    fn count_dragons(&self) -> i8 {
         let mut dragons: i8 = 0;
-        None
+        dragons
     }
-    fn count_winds(&self) -> Option<i8> {
+    fn count_winds(&self) -> i8 {
         let mut winds: i8 = 0;
-        None
+        winds
     }
     fn has_any_honor(&self) -> bool {
         //if self.pair.tile == Tile::HonorTile || self.melds.
@@ -67,13 +153,7 @@ impl HandHelpers for FullHand {
     }
 }
 
-#[derive(Debug)]
-pub struct FullHand {
-    melds: [Meld; 4],
-    pair: Pair
-}
-
-trait MeldHelpers {
+pub trait MeldHelpers {
     fn has_honor(&self) -> bool;
     fn has_terminal(&self) -> bool;
 }
@@ -81,15 +161,15 @@ trait MeldHelpers {
 impl MeldHelpers for Meld {
     fn has_honor(&self) -> bool{
         match self {
-            Meld::Triplet(trip) => {
-                match trip.tile {
-                    Tile::Honor(_) => true,
+            Meld::Triplet {open, tile} => {
+                match tile {
+                    Tile::Wind(_) | Tile::Dragon(_) => true,
                     _ => false
                 }
             },
-            Meld::Kan(kan) => {
-                match kan.tile {
-                    Tile::Honor(_) => true,
+            Meld::Kan {open, tile} => {
+                match tile {
+                    Tile::Wind(_) | Tile::Dragon(_) => true,
                     _ => false
                 }
             },
@@ -98,58 +178,21 @@ impl MeldHelpers for Meld {
     }
     fn has_terminal(&self) -> bool{
         match self {
-            Meld::Sequence(seq) => {
-                for tile in seq.tiles {
+            Meld::Sequence {open, tiles} => {
+                for tile in tiles {
                     if tile.is_terminal() {
                         return true
                     }
                 }
                 false
             },
-            Meld::Kan(kan) => {
-                match kan.tile {
-                    Tile::Number(tile) => tile.is_terminal(),
-                    _ => false
-                }
+            Meld::Kan {open, tile} => {
+                tile.is_terminal()
             },
-            Meld::Triplet(trip) => {
-                match trip.tile {
-                    Tile::Number(tile) => tile.is_terminal(),
-                    _ => false
-                }
+            Meld::Triplet {open, tile} => {
+                tile.is_terminal()
             },
             _ => false,
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Meld {
-    Triplet(Triplet),
-    Sequence(Sequence),
-    Kan(Kan),
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Triplet{
-    open: bool,
-    tile: Tile
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Sequence{
-    open: bool,
-    tiles: [NumberTile; 3]
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Kan{
-    open: bool,
-    tile: Tile
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Pair {
-    open: bool,
-    tile: Tile
 }
