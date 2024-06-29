@@ -82,6 +82,7 @@ impl FromChar for Suit {
 }
 
 pub trait TileHelpers {
+    fn is_numbered(&self) -> bool;
     fn is_terminal(&self) -> bool;
     fn is_honor(&self) -> bool;
     fn adjacent_all(&self) -> Vec<[Tile; 2]>;
@@ -89,18 +90,22 @@ pub trait TileHelpers {
     fn adjacent_down(&self) -> Option<[Tile; 2]>;
     fn adjacent_around(&self) -> Option<[Tile; 2]>;
     fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
+    fn get_number(&self) -> Result<i8, ScoringError>;
 }
 
 impl TileHelpers for Tile {
+    fn is_numbered(&self) -> bool {
+        match self {Tile::Number {..} => true, _ => false}
+    }
     fn is_terminal(&self) -> bool {
-        match self {Tile::Number {suit, number, red} => {
+        match self {Tile::Number {number, ..} => {
                 if *number == 1 as i8 || *number == 9 as i8 { true } else { false }},
             _ => false,}
     }
 
     fn is_honor(&self) -> bool {
         match self {
-            Tile::Number {suit, number, red} => false,
+            Tile::Number {..} => false,
             _ => true
         }
     }
@@ -115,7 +120,7 @@ impl TileHelpers for Tile {
     }
 
     fn adjacent_up(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, red} => {
+        match self {Tile::Number {suit, number, ..} => {
             match number {
                 8 | 9 => None,
                 _ => Some(Self::adjacent(*suit, *number, 1, 2))
@@ -124,7 +129,7 @@ impl TileHelpers for Tile {
     }
 
     fn adjacent_down(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, red} => {
+        match self {Tile::Number {suit, number, ..} => {
             match number {
                 1 | 2 => None,
                 _ => Some(Self::adjacent(*suit, *number, -1, -2))
@@ -133,7 +138,7 @@ impl TileHelpers for Tile {
     }
 
     fn adjacent_around(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, red} => {
+        match self {Tile::Number {suit, number, ..} => {
             match number {
                 1 | 9 => None,
                 _ => Some(Self::adjacent(*suit, *number, -1, 1))
@@ -148,16 +153,23 @@ impl TileHelpers for Tile {
         ];
         adj
     }
+
+    fn get_number(&self) -> Result<i8, ScoringError> {
+        match self {
+            Tile::Number {number, ..} => Ok(*number),
+            _ => Err(ScoringError::TileError)
+        }
+    }
 }
 
-trait DoraOf {
-    fn dora_of (self: &Self) -> Tile;
+pub trait DoraOf {
+    fn dora (self: &Self) -> Tile;
 }
 
 impl DoraOf for Tile {
-    fn dora_of (self: &Self) -> Tile {
+    fn dora (self: &Self) -> Tile {
         match self {
-            Tile::Number {suit, number, red} => {
+            Tile::Number {suit, number, ..} => {
                 if *number == 9 as i8 {
                     Tile::Number{suit: *suit, number: 1, red: false}
                 } else {
@@ -184,7 +196,7 @@ impl DoraOf for Tile {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum Tile {
     Number{
         suit: Suit,
@@ -222,13 +234,13 @@ impl PartialEq for Tile {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum Suit {Man, Sou, Pin,}
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum Dragon {White, Green, Red,}
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
 pub enum Wind {East, South, West, North,}
 
 mod tests {
@@ -268,10 +280,10 @@ mod tests {
 
     #[test]
     fn test_dora(){
-        assert_eq!(Tile::Dragon(Dragon::Green).dora_of(), Tile::Dragon(Dragon::Red));
-        assert_eq!(Tile::Wind(Wind::North).dora_of(), Tile::Wind(Wind::East));
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.dora_of(), Tile::Number{suit: Suit::Sou, number: 2, red: false});
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.dora_of(), Tile::Number{suit: Suit::Sou, number: 1, red: false});
+        assert_eq!(Tile::Dragon(Dragon::Green).dora(), Tile::Dragon(Dragon::Red));
+        assert_eq!(Tile::Wind(Wind::North).dora(), Tile::Wind(Wind::East));
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.dora(), Tile::Number{suit: Suit::Sou, number: 2, red: false});
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.dora(), Tile::Number{suit: Suit::Sou, number: 1, red: false});
     }
 
     #[test]
