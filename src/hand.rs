@@ -85,27 +85,22 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
     }
     
     let mut partials: Vec<PartialHand> = vec![];
+    let mut subset: Vec<Tile> = remaining_tiles[1..].to_vec();
     
     if remaining_tiles[1 ..].contains(&remaining_tiles[0]) {
         let dupe_count = remaining_tiles.count_occurances(remaining_tiles[0]);
         if dupe_count >= 2 && remaining_pairs > 0 {
             let temp: MeldOrPair = MeldOrPair::Pair(Pair{tile: remaining_tiles[0]});
+            let mut subs: Vec<Tile> = subset.clone();
+            
+            subs.remove(subs.iter().position(|x| *x == remaining_tiles[0])?);
 
-            let mut subset: Vec<Tile> = remaining_tiles[1..].to_vec();
-            subset.remove(subset.iter().position(|x| *x == remaining_tiles[0])?);
-
-            let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans, remaining_pairs - 1, remaining_sets - 1);
+            let recursions: Option<Vec<PartialHand>> = compose_tiles(subs, remaining_kans, remaining_pairs - 1, remaining_sets - 1);
             if recursions.is_some() {
                 for mut hand in recursions.unwrap() {
-                    match hand {
-                        PartialHand::Valid(mut value) => {
-                            let mut p: Vec<MeldOrPair> = vec![temp.clone()];
-                            p.append(&mut value);
-                            partials.push(PartialHand::Valid(p));
-                        },
-                        PartialHand::Invalid => ()
+                    if let PartialHand::Valid(value) = hand {
+                        partials.push(PartialHand::Valid([vec![temp.clone()], value].concat()));
                     }
-                    
                 }
             } else {
                 partials.push(PartialHand::Valid(vec![temp]));
@@ -123,15 +118,9 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
             let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans, remaining_pairs, remaining_sets - 1);
             if recursions.is_some() {
                 for mut hand in recursions.unwrap() {
-                    match hand {
-                        PartialHand::Valid(mut value) => {
-                            let mut p: Vec<MeldOrPair> = vec![temp.clone()];
-                            p.append(&mut value);
-                            partials.push(PartialHand::Valid(p));
-                        },
-                        PartialHand::Invalid => ()
-                    }
-                    
+                    if let PartialHand::Valid(value) = hand {
+                        partials.push(PartialHand::Valid([vec![temp.clone()], value].concat()));
+                    } 
                 }
             } else {
                 partials.push(PartialHand::Valid(vec![temp]));
@@ -149,15 +138,9 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
             let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans - 1, remaining_pairs, remaining_sets - 1);
             if recursions.is_some() {
                 for mut hand in recursions.unwrap() {
-                    match hand {
-                        PartialHand::Valid(mut value) => {
-                            let mut p: Vec<MeldOrPair> = vec![temp.clone()];
-                            p.append(&mut value);
-                            partials.push(PartialHand::Valid(p));
-                        },
-                        PartialHand::Invalid => ()
+                    if let PartialHand::Valid(value) = hand {
+                        partials.push(PartialHand::Valid([vec![temp.clone()], value].concat()));
                     }
-                    
                 }
             } else {
                 partials.push(PartialHand::Valid(vec![temp]));
@@ -179,15 +162,9 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
                 let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans - 1, remaining_pairs, remaining_sets - 1);
                 if recursions.is_some() {
                     for mut hand in recursions.unwrap() {
-                        match hand {
-                            PartialHand::Valid(mut value) => {
-                                let mut p: Vec<MeldOrPair> = vec![temp.clone()];
-                                p.append(&mut value);
-                                partials.push(PartialHand::Valid(p));
-                            },
-                            PartialHand::Invalid => ()
+                        if let PartialHand::Valid(value) = hand {
+                            partials.push(PartialHand::Valid([vec![temp.clone()], value].concat()));
                         }
-                        
                     }
                 } else {
                     partials.push(PartialHand::Valid(vec![temp]));
@@ -324,10 +301,7 @@ impl HandHelpers for FullHand {
     fn count_sequences(&self) -> i8 {
         let mut seqs: i8 = 0;
         for meld in self.melds {
-            match meld {
-                Meld::Sequence {..} => seqs += 1,
-                _ => ()
-            }
+            if let Meld::Sequence{..} = meld { seqs += 1 }
         }
         seqs
     }
@@ -358,10 +332,7 @@ impl HandHelpers for FullHand {
     fn count_kans(&self) -> i8 {
         let mut kans: i8 = 0;
         for meld in self.melds {
-            match meld {
-                Meld::Kan {..} => kans += 1,
-                _ => ()
-            }
+            if let Meld::Kan{..} = meld { kans += 1 }
         }
         kans
     }
@@ -400,20 +371,14 @@ impl HandHelpers for FullHand {
     fn only_sequences(&self) -> Vec<Meld> {
         let mut vec: Vec<Meld> = vec![];
         for meld in &self.melds {
-            match meld {
-                &Meld::Sequence {..} => vec.push(*meld),
-                _ => ()
-            }
+            if let &Meld::Sequence {..} = meld { vec.push(*meld) }
         }
         vec
     }
     fn without_sequences(&self) -> Vec<Meld> {
         let mut vec: Vec<Meld> = vec![];
         for meld in &self.melds {
-            match meld {
-                &Meld::Sequence {..} => (),
-                _ => vec.push(*meld)
-            }
+            if let &Meld::Sequence {..} = meld { vec.push(*meld) }
         }
         vec
     }
@@ -485,10 +450,7 @@ impl MeldHelpers for Meld {
     fn is_dragon(&self) -> bool {
         match self {
             Meld::Kan {open, tile} | Meld::Triplet {open, tile} => {
-                match tile {
-                    Tile::Dragon(_) => true,
-                    _ => false
-                }
+                if let Tile::Dragon(_) = tile { true } else { false }
             }
             _ => false
         }
@@ -496,10 +458,7 @@ impl MeldHelpers for Meld {
     fn is_wind(&self) -> bool {
         match self {
             Meld::Kan {open, tile} | Meld::Triplet {open, tile} => {
-                match tile {
-                    Tile::Wind(_) => true,
-                    _ => false
-                }
+                if let Tile::Wind(_) = tile { true } else { false }
             }
             _ => false
         }
@@ -517,16 +476,10 @@ impl MeldHelpers for Pair {
         self.tile.is_terminal()
     }
     fn is_dragon(&self) -> bool {
-        match self.tile {
-            Tile::Dragon(_) => true,
-            _ => false
-        }
+        if let Tile::Dragon(_) = self.tile { true } else { false }
     }
     fn is_wind(&self) -> bool {
-        match self.tile {
-            Tile::Wind(_) => true,
-            _ => false
-        }
+        if let Tile::Wind(_) = self.tile { true } else { false }
     }
 }
 
@@ -537,15 +490,11 @@ pub trait SequenceHelpers {
 
 impl SequenceHelpers for Meld {
     fn as_numbers(&self) -> [i8; 3] {
-        match self {
-            Meld::Sequence {tiles, ..} => {
-                let mut a: [i8; 3] = [tiles[0].get_number().unwrap(), tiles[1].get_number().unwrap(), tiles[2].get_number().unwrap()];
-                a.sort();
-                a
-            },
-            _ => panic!()
-        }
-        
+        if let Meld::Sequence {tiles, ..} = self {
+            let mut a: [i8; 3] = [tiles[0].get_number().unwrap(), tiles[1].get_number().unwrap(), tiles[2].get_number().unwrap()];
+            a.sort();
+            a
+        } else { panic!() } 
     }
     fn ittsuu_viable(&self) -> bool {
         match self.as_numbers()[0] {
