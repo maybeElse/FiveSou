@@ -95,19 +95,16 @@ pub trait TileHelpers {
 
 impl TileHelpers for Tile {
     fn is_numbered(&self) -> bool {
-        match self {Tile::Number {..} => true, _ => false}
+        if let Tile::Number {..} = self { true } else { false}
     }
     fn is_terminal(&self) -> bool {
-        match self {Tile::Number {number, ..} => {
-                if *number == 1 as i8 || *number == 9 as i8 { true } else { false }},
-            _ => false,}
+        if let Tile::Number {number, ..} = self {
+                if *number == 1 as i8 || *number == 9 as i8 { true } else { false }
+        } else { false }
     }
 
     fn is_honor(&self) -> bool {
-        match self {
-            Tile::Number {..} => false,
-            _ => true
-        }
+        if let Tile::Number {..} = self { true } else { false }
     }
 
     fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
@@ -155,10 +152,7 @@ impl TileHelpers for Tile {
     }
 
     fn get_number(&self) -> Result<i8, ScoringError> {
-        match self {
-            Tile::Number {number, ..} => Ok(*number),
-            _ => Err(ScoringError::TileError)
-        }
+        if let Tile::Number {number, ..} = self { Ok(*number) } else { Err(ScoringError::TileError) }
     }
 }
 
@@ -216,19 +210,12 @@ impl PartialEq for Tile {
                     _ => false,
                 }},
             Tile::Dragon(val1) => {
-                match other {
-                    Tile::Dragon(val2) => val1 == val2,
-                    _ => false,
-                }},
+                if let Tile::Dragon(val2) = other { val1 == val2 } else { false }
+                },
             Tile::Number {suit, number, red} => {
                 let s1 = suit;
                 let n1 = number;
-                match other {
-                    Tile::Number {suit, number, red} => {
-                        s1 == suit && n1 == number
-                    },
-                    _ => false,
-                }
+                if let Tile::Number {suit, number, ..} = other { s1 == suit && n1 == number } else { false }
             }
         }
     }
