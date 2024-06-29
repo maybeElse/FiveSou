@@ -48,7 +48,7 @@ pub enum Meld {
     },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Pair {
     pub tile: Tile
 }
@@ -93,7 +93,7 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
             let temp: MeldOrPair = MeldOrPair::Pair(Pair{tile: remaining_tiles[0]});
             let mut subs: Vec<Tile> = subset.clone();
             
-            subs.remove(subs.iter().position(|x| *x == remaining_tiles[0])?);
+            subs.remove_x_occurances(remaining_tiles[0], 1);
 
             let recursions: Option<Vec<PartialHand>> = compose_tiles(subs, remaining_kans, remaining_pairs - 1, remaining_sets - 1);
             if recursions.is_some() {
@@ -108,14 +108,11 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
         }
         if dupe_count >= 3 {
             let temp: MeldOrPair = MeldOrPair::Meld(Meld::Triplet{tile: remaining_tiles[0], open: false});
-
-            let mut subset: Vec<Tile> = remaining_tiles[1..].to_vec();
-            // removing one occurence twice is the same as removing two occurences ...
-            // ugly, but it works
-            subset.remove(subset.iter().position(|x| *x == remaining_tiles[0])?);
-            subset.remove(subset.iter().position(|x| *x == remaining_tiles[0])?);
+            let mut subs: Vec<Tile> = subset.clone();
             
-            let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans, remaining_pairs, remaining_sets - 1);
+            subs.remove_x_occurances(remaining_tiles[0], 2);
+            
+            let recursions: Option<Vec<PartialHand>> = compose_tiles(subs, remaining_kans, remaining_pairs, remaining_sets - 1);
             if recursions.is_some() {
                 for mut hand in recursions.unwrap() {
                     if let PartialHand::Valid(value) = hand {
@@ -130,12 +127,12 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
             // this code should never be used, since kans are always called! there's no such thing as an uncalled kan
             // I'm keeping it in here for completeness, I guess? going through compose_hand() will prevent it from ever being called.
             let temp: MeldOrPair = MeldOrPair::Meld(Meld::Kan{tile: remaining_tiles[0], open: false});
-
-            let mut subset: Vec<Tile> = remaining_tiles[1..].to_vec();
+            let mut subs: Vec<Tile> = subset.clone();
+            
             // as only four copies of each tile exist, removing *every* occurence is appropriate
-            subset.retain(|x| *x != remaining_tiles[0]);
+            subs.retain(|x| *x != remaining_tiles[0]);
 
-            let recursions: Option<Vec<PartialHand>> = compose_tiles(subset, remaining_kans - 1, remaining_pairs, remaining_sets - 1);
+            let recursions: Option<Vec<PartialHand>> = compose_tiles(subs, remaining_kans - 1, remaining_pairs, remaining_sets - 1);
             if recursions.is_some() {
                 for mut hand in recursions.unwrap() {
                     if let PartialHand::Valid(value) = hand {
@@ -295,6 +292,7 @@ pub trait HandHelpers {
     fn only_sequences(&self) -> Vec<Meld>;      // returns only sequences
     fn without_sequences(&self) -> Vec<Meld>;   // returns only triplets and kans
     fn as_tiles(&self) -> Vec<Tile>;   // pulls tiles out of melds/pairs into an array
+    fn only_closed(&self) -> Vec<MeldOrPair>;   // only the closed part of the hand
 } 
 
 impl HandHelpers for FullHand {
@@ -401,6 +399,19 @@ impl HandHelpers for FullHand {
         }
         vec
     }
+
+    fn only_closed(&self) -> Vec<MeldOrPair> {
+        let mut vec: Vec<MeldOrPair> = vec![];
+        vec.push(MeldOrPair::Pair(self.pair));
+        for meld in self.melds {
+            match meld {
+                Meld::Triplet {open, ..} | Meld::Kan {open, ..} | Meld::Sequence {open, ..}
+                    => if !open { vec.push(MeldOrPair::Meld(meld))},
+                _ => ()
+            }
+        }
+        vec
+    }
 }
 
 pub trait MeldHelpers {
@@ -408,6 +419,7 @@ pub trait MeldHelpers {
     fn has_terminal(&self) -> bool;
     fn is_dragon(&self) -> bool;
     fn is_wind(&self) -> bool;
+    fn contains_tile(&self, tile: Tile) -> bool;
 }
 
 impl MeldHelpers for Meld {
@@ -463,6 +475,17 @@ impl MeldHelpers for Meld {
             _ => false
         }
     }
+    fn contains_tile(&self, t: Tile) -> bool {
+        match self {
+            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => t == *tile,
+            Meld::Sequence {tiles, ..} => {
+                for tile in tiles {
+                    if t == *tile { return true }
+                }
+                false
+            }
+        }
+    }
 }
 
 impl MeldHelpers for Pair {
@@ -481,11 +504,15 @@ impl MeldHelpers for Pair {
     fn is_wind(&self) -> bool {
         if let Tile::Wind(_) = self.tile { true } else { false }
     }
+    fn contains_tile(&self, t: Tile) -> bool {
+        self.tile == t
+    }
 }
 
 pub trait SequenceHelpers {
     fn as_numbers(&self) -> [i8; 3];
     fn ittsuu_viable(&self) -> bool;
+    fn is_middle(&self, tile: Tile) -> bool;
 }
 
 impl SequenceHelpers for Meld {
@@ -494,7 +521,7 @@ impl SequenceHelpers for Meld {
             let mut a: [i8; 3] = [tiles[0].get_number().unwrap(), tiles[1].get_number().unwrap(), tiles[2].get_number().unwrap()];
             a.sort();
             a
-        } else { panic!() } 
+        } else { panic!("called as_numbers() on a non-sequence meld!") } 
     }
     fn ittsuu_viable(&self) -> bool {
         match self.as_numbers()[0] {
@@ -502,15 +529,28 @@ impl SequenceHelpers for Meld {
             _ => false
         }
     }
+    fn is_middle(&self, tile: Tile) -> bool {
+        if let Meld::Sequence {tiles, ..} = self {
+            let mut a: [Tile; 3] = tiles.clone();
+            a.sort();
+            a[1] == tile
+        } else { panic!("called is_middle() on a non-sequence meld!") }
+    }
 }
 
-pub trait CountTiles {
+pub trait VecTileHelpers {
     fn count_occurances(&self, tile: Tile) -> i8;
+    fn remove_x_occurances(&mut self, tile: Tile, count: i8) -> ();
 }
 
-impl CountTiles for Vec<Tile> {
+impl VecTileHelpers for Vec<Tile> {
     fn count_occurances(&self, tile: Tile) -> i8 {
         self.iter().fold(0, |acc, value| {if tile == *value { acc + 1 } else { acc }})
+    }
+    fn remove_x_occurances(&mut self, tile: Tile, count: i8) -> () {
+        for i in 0..count {
+            self.remove(self.iter().position(|x| *x == tile).unwrap());
+        }
     }
 }
 
