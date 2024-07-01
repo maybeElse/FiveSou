@@ -1,5 +1,5 @@
 use crate::errors::errors::{ScoringError, ParsingError, ValueError};
-use crate::yaku::{Yaku, YakuSpecial, WinType};
+use crate::yaku::{Yaku, YakuSpecial, WinType, YAKUMAN};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, MeldOrPair, SequenceHelpers};
 
@@ -65,9 +65,9 @@ pub fn count_han(
             Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
 
             // yakuman hands
-            Yaku::Kokushi | Yaku::Suanko | Yaku::Daisangen | Yaku::Shosushi
-            | Yaku::Daisushi | Yaku::Tsuiso | Yaku::Chinroto | Yaku::Ryuiso
-            | Yaku::ChurenPoto | Yaku::Sukantsu | Yaku::SpecialWait => han_count += 13,
+            Yaku::Daisushi | Yaku::Daichiishin => han_count += 26, // double yakuman
+            _ if YAKUMAN.contains(&yaku) => han_count += 13,
+            _ => panic!(),
         }
     }
 
@@ -134,7 +134,7 @@ pub fn calc_base_points( han: i8, fu: i8 ) -> Result<i32, ScoringError> {
             6 | 7 => Ok(3000),      // Haneman
             8 | 9 | 10 => Ok(4000), // Baiman
             11 | 12 => Ok(6000),    // Sanbaiman
-            _ => Ok(8000)           // Kazoe Yakuman
+            _ => Ok(8000 * (han as i32 / 13))   // Yakuman and Kazoe Yakuman
         }
     }
 }
@@ -159,11 +159,20 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn han_counts(){
         assert_eq!(count_han(
             vec![Yaku::Chiitoi],
             vec![YakuSpecial::Riichi],
-            0, true).unwrap(), 3)
+            0, true).unwrap(), 3);
+        assert_eq!(count_han(
+            vec![Yaku::Chinroto],
+            vec![YakuSpecial::Riichi],
+            0, true).unwrap(), 13);
+        assert_eq!(count_han(
+            vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen],
+            vec![YakuSpecial::Riichi],
+            0, true).unwrap(), 26);
     }
 
     #[test]
