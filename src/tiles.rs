@@ -51,6 +51,8 @@ pub trait TileHelpers {
     fn is_numbered(&self) -> bool;
     fn is_terminal(&self) -> bool;
     fn is_honor(&self) -> bool;
+    fn is_wind(&self) -> bool;
+    fn is_dragon(&self) -> bool;
     fn adjacent_all(&self) -> Vec<[Tile; 2]>;
     fn adjacent_up(&self) -> Option<[Tile; 2]>;
     fn adjacent_down(&self) -> Option<[Tile; 2]>;
@@ -136,11 +138,15 @@ impl TileHelpers for Tile {
                 if *number == 1 || *number == 9 { true } else { false }
         } else { false }
     }
-
     fn is_honor(&self) -> bool {
         if let Tile::Number {..} = self { false } else { true }
     }
-
+    fn is_wind(&self) -> bool{
+        if let Tile::Wind {..} = self { true } else { false }
+    }
+    fn is_dragon(&self) -> bool {
+        if let Tile::Dragon {..} = self { true } else { false }
+    }
     fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
         let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
         let mut vec: Vec<[Tile; 2]> = vec![];
@@ -149,7 +155,6 @@ impl TileHelpers for Tile {
         }
         vec
     }
-
     fn adjacent_up(&self)  -> Option<[Tile; 2]> {
         match self {Tile::Number {suit, number, ..} => {
             match number {
@@ -158,7 +163,6 @@ impl TileHelpers for Tile {
             }},
             _ => panic!("unreachable code in adjacent_up"),}
     }
-
     fn adjacent_down(&self)  -> Option<[Tile; 2]> {
         match self {Tile::Number {suit, number, ..} => {
             match number {
@@ -167,7 +171,6 @@ impl TileHelpers for Tile {
             }},
             _ => panic!("unreachable code in adjacent_down"),}
     }
-
     fn adjacent_around(&self)  -> Option<[Tile; 2]> {
         match self {Tile::Number {suit, number, ..} => {
             match number {
@@ -176,7 +179,6 @@ impl TileHelpers for Tile {
             }},
             _ => panic!("unreachable code in adjacent_around"),}
     }
-
     fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2] {
         let adj: [Tile; 2] = [
             Tile::Number{suit: suit, number: number + one, red: false},
@@ -184,11 +186,9 @@ impl TileHelpers for Tile {
         ];
         adj
     }
-
     fn get_number(&self) -> Result<i8, ScoringError> {
         if let Tile::Number {number, ..} = self { Ok(*number) } else { Err(ScoringError::TileError) }
     }
-
     fn dora (self: &Self) -> Tile {
         match self {
             Tile::Number {suit, number, ..} => {
