@@ -1,8 +1,34 @@
 use crate::errors::errors::{ScoringError, ParsingError};
+use core::fmt;
     
-trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
-trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
-trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+
+///////////////////////
+// structs and enums //
+///////////////////////
+
+#[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord)]
+pub enum Tile {
+    Number{
+        suit: Suit,
+        number: i8,
+        red: bool
+    },
+    Dragon(Dragon),
+    Wind(Wind)
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+pub enum Suit {Man, Sou, Pin,}
+
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+pub enum Dragon {White, Green, Red,}
+
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+pub enum Wind {East, South, West, North,}
+
+///////////////
+// functions //
+///////////////
 
 pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, ScoringError> {
     let mut vec: Vec<Tile> = Vec::new();
@@ -12,6 +38,26 @@ pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, ScoringError> {
         vec.push(Tile::from_string(tile)?);
     }
     Ok(vec)   
+}
+
+////////////
+// traits //
+////////////
+
+trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
+trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+pub trait TileHelpers {
+    fn is_numbered(&self) -> bool;
+    fn is_terminal(&self) -> bool;
+    fn is_honor(&self) -> bool;
+    fn adjacent_all(&self) -> Vec<[Tile; 2]>;
+    fn adjacent_up(&self) -> Option<[Tile; 2]>;
+    fn adjacent_down(&self) -> Option<[Tile; 2]>;
+    fn adjacent_around(&self) -> Option<[Tile; 2]>;
+    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
+    fn get_number(&self) -> Result<i8, ScoringError>;
+    fn dora (self: &Self) -> Tile;
 }
 
 impl FromString for Tile {
@@ -62,9 +108,9 @@ impl FromChar for Wind {
     fn from_char(char: char) -> Result<Self, ScoringError> {
         match char {
             'e' => Ok(Wind::East),
-            's' => Ok(Wind::East),
-            'w' => Ok(Wind::East),
-            'n' => Ok(Wind::East),
+            's' => Ok(Wind::South),
+            'w' => Ok(Wind::West),
+            'n' => Ok(Wind::North),
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
         }
     }
@@ -81,30 +127,18 @@ impl FromChar for Suit {
     }
 }
 
-pub trait TileHelpers {
-    fn is_numbered(&self) -> bool;
-    fn is_terminal(&self) -> bool;
-    fn is_honor(&self) -> bool;
-    fn adjacent_all(&self) -> Vec<[Tile; 2]>;
-    fn adjacent_up(&self) -> Option<[Tile; 2]>;
-    fn adjacent_down(&self) -> Option<[Tile; 2]>;
-    fn adjacent_around(&self) -> Option<[Tile; 2]>;
-    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
-    fn get_number(&self) -> Result<i8, ScoringError>;
-}
-
 impl TileHelpers for Tile {
     fn is_numbered(&self) -> bool {
         if let Tile::Number {..} = self { true } else { false}
     }
     fn is_terminal(&self) -> bool {
         if let Tile::Number {number, ..} = self {
-                if *number == 1 as i8 || *number == 9 as i8 { true } else { false }
+                if *number == 1 || *number == 9 { true } else { false }
         } else { false }
     }
 
     fn is_honor(&self) -> bool {
-        if let Tile::Number {..} = self { true } else { false }
+        if let Tile::Number {..} = self { false } else { true }
     }
 
     fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
@@ -154,13 +188,7 @@ impl TileHelpers for Tile {
     fn get_number(&self) -> Result<i8, ScoringError> {
         if let Tile::Number {number, ..} = self { Ok(*number) } else { Err(ScoringError::TileError) }
     }
-}
 
-pub trait DoraOf {
-    fn dora (self: &Self) -> Tile;
-}
-
-impl DoraOf for Tile {
     fn dora (self: &Self) -> Tile {
         match self {
             Tile::Number {suit, number, ..} => {
@@ -190,17 +218,6 @@ impl DoraOf for Tile {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord)]
-pub enum Tile {
-    Number{
-        suit: Suit,
-        number: i8,
-        red: bool
-    },
-    Dragon(Dragon),
-    Wind(Wind)
-}
-
 impl PartialEq for Tile {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -221,14 +238,50 @@ impl PartialEq for Tile {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
-pub enum Suit {Man, Sou, Pin,}
+impl fmt::Display for Tile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Tile::Wind(wind) => { write!(f, "w{}", wind) },
+            Tile::Dragon(dragon) => { write!(f, "d{}", dragon) },
+            Tile::Number {suit, number, red} => { write!(f, "{}{}{}", suit, number, {if *red { "r" } else { "" }}) },
+        }
+    }
+}
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
-pub enum Dragon {White, Green, Red,}
+impl fmt::Display for Dragon {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Dragon::Red => write!(f, "r",),
+            Dragon::White => write!(f, "w",),
+            Dragon::Green => write!(f, "g",),
+        }
+    }
+}
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
-pub enum Wind {East, South, West, North,}
+impl fmt::Display for Wind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Wind::East => write!(f, "e",),
+            Wind::South => write!(f, "s",),
+            Wind::West => write!(f, "w",),
+            Wind::North => write!(f, "n",),
+        }
+    }
+}
+
+impl fmt::Display for Suit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Suit::Pin => write!(f, "p",),
+            Suit::Man => write!(f, "m",),
+            Suit::Sou => write!(f, "s",),
+        }
+    }
+}
+
+///////////
+// tests //
+///////////
 
 mod tests {
     use super::*;

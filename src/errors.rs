@@ -6,7 +6,7 @@ pub mod errors {
         ValueError(ValueError),
         ParseError(ParsingError),
         TileError,
-        WrongPipeline, // nagashi mangan and yakuman hands shouldn't go through the normal scoring pipeline
+        WrongPipeline, // nagashi mangan shouldn't go through the normal scoring pipeline
         Unimplemented
     }
 
@@ -15,6 +15,7 @@ pub mod errors {
         BadChar,
         BadString,
         BadInteger,
+        Unimplemented
     }
 
     #[derive(Debug, PartialEq)]
