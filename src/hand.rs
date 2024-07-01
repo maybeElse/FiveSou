@@ -1,12 +1,14 @@
-use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, DoraOf};
+use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::errors::errors::{ScoringError, ParsingError, CompositionError};
 use crate::yaku::{Yaku, YakuSpecial, WinType};
+use crate::yaku;
+use core::fmt;
 
 ///////////////////////
 // structs and enums //
 ///////////////////////
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Hand {
     Standard{
         full_hand: FullHand,
@@ -26,7 +28,7 @@ pub enum Hand {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct FullHand {
     pub melds: [Meld; 4],
     pub pair: Pair
@@ -71,11 +73,66 @@ pub enum PartialHand {
 ///////////////
 
 fn compose_hand(
-    closed_tiles: Vec<Tile>,
-    called_tiles: Vec<Meld>,
-    winning_tile: Tile // relevant for yaku testing
+    closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
+    // stuff we need for yaku testing
+    winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
 ) -> Result<Hand, ScoringError> {
-    Err(ScoringError::Unimplemented)
+    // if there are multiple ways to read the hand, we'll use this to decide which to return
+    let mut possible_hands: Vec<Hand> = vec![];
+    
+    // first of all, test for strange hand shapes
+    if closed_tiles.len() == 14 && called_tiles.is_none() {
+        // thirteen orphans
+        let kokushi: Option<Vec<Yaku>> = compose_kokushi(closed_tiles.clone(), winning_tile);
+        if kokushi.is_some() {
+            // a thirteen orphan hand can't be anything else, so we'll just return it
+            return Ok(Hand::Kokushi{
+                full_hand: closed_tiles.try_into().unwrap(),
+                winning_tile: winning_tile,
+                yaku: kokushi.unwrap()
+            })
+        }
+        // seven pairs
+        let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
+        if chiitoi.is_some() {
+            possible_hands.push(
+                Hand::Chiitoi{
+                    full_hand: chiitoi.unwrap().try_into().unwrap(),
+                    winning_tile: winning_tile, 
+                    yaku: yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile)?,
+                }
+            );
+        }
+    }
+
+    // now we'll test for normal hand shapes
+    let mut standard_hands: Vec<FullHand> = vec![];
+    // the closed portion of the hand *must* contain the pair, and any melds which haven't been called. simple!
+    let standard_partials: Option<Vec<PartialHand>> = compose_tiles(closed_tiles, 0, 1, (4 - called_tiles.unwrap_or_default().len()) as i8);
+
+    if standard_partials.is_some() {
+        for partial in standard_partials.unwrap() {
+            if let PartialHand::Valid(partial_vec) = partial {
+                let mut melds: Vec<Meld> = vec![];
+                let mut pair: Pair;
+                for meld_or_pair in partial_vec {
+            }
+            
+
+            }
+        }
+    }
+
+    match possible_hands.len() {
+        0 => return Err(ScoringError::NoHands),
+        1 => return Ok(possible_hands[0].clone()),
+        _ => {
+            for hand in possible_hands{
+                println!(".{}", hand);
+            }
+            return Err(ScoringError::Unimplemented)
+        },
+    }
 }
 
 // only for standard hands
@@ -173,8 +230,46 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_kans: i8, remaining_pairs
     if partials.is_empty() { return Some(vec![PartialHand::Invalid]) } else { return Some(partials) }
 }
 
-fn compose_chiitoi() -> Result<[Pair; 7], CompositionError> {
-    Err(CompositionError::NotImplemented)
+fn compose_chiitoi(
+    mut tiles: Vec<Tile>
+) -> Option<[Pair; 7]> {
+    if tiles.len() != 14 { return None }
+    tiles.sort();
+    
+    let mut pairs: Vec<Pair> = vec![];
+    for i in 0..7 {
+        if tiles[2*i] == tiles[(2*i)+1] && tiles[i] != tiles[i+2] {
+            pairs.push(Pair{tile: tiles[i]});
+        } else { return None }
+    }
+
+    if pairs.len() == 7 {
+        return Some(pairs.try_into().unwrap())
+    } else { return None }
+}
+
+fn compose_kokushi(
+    tiles: Vec<Tile>,
+    winning_tile: Tile
+) -> Option<Vec<Yaku>> {
+    let mut pair: bool = false;
+    let mut won_on: bool = false;
+    let mut tracker: Vec<Tile> = vec![];
+    for tile in tiles {
+        if tile.is_terminal() || tile.is_honor() {
+            if !tracker.contains(&tile) { tracker.push(tile);
+            } else if !pair {
+                pair = true;
+                if tile == winning_tile { won_on = true; }
+            } else { break }
+        } else { break }
+    }
+    if tracker.len() == 13 && pair {
+        let mut yaku: Vec<Yaku> = vec![Yaku::Kokushi];
+        if won_on { yaku.push(Yaku::SpecialWait) }
+        return Some(yaku)
+    }
+    None
 }
 
 ////////////
@@ -187,6 +282,7 @@ pub trait HandTools {
     fn has_any_simple(&self) -> bool;   // checks for simple tiles (2-8)
     fn as_tiles(&self) -> Vec<Tile>;    // gets an array of tiles, mostly for dora counting
     fn count_dora(&self, dora_markers: Vec<Tile>) -> i8;    // counts how many dora are present
+    fn get_yaku(&self) -> Vec<Yaku>;    // just to make my life a bit easier
 }
 
 impl HandTools for Hand {
@@ -268,6 +364,7 @@ impl HandTools for Hand {
         }
     }
     fn count_dora(&self, dora_markers: Vec<Tile>) -> i8 {
+        panic!("tiles in hands may lose or gain redness");
         let mut dora_count: i8 = 0;
         let vec: Vec<Tile> = self.as_tiles();
         for marker in dora_markers {
@@ -276,45 +373,57 @@ impl HandTools for Hand {
         }
         dora_count
     }
+    fn get_yaku(&self) -> Vec<Yaku> {
+        // TODO: find a better way to grab the field
+        match self { Hand::Standard {yaku, ..} | Hand::Chiitoi {yaku, ..} | Hand::Kokushi {yaku, ..} => yaku.clone(), }
+    }
 }
 
-pub trait HandHelpers {  
-    fn count_sequence_suits(&self) -> i8; // count how many suits are present in ...
-    fn count_triplet_suits(&self) -> i8;  // only sequences or only suits.
-    fn count_sequences(&self) -> i8;    // counts how many sequences are present
-    fn count_triplets(&self) -> i8;     // counts how many triplets are present
-    fn count_kans(&self) -> i8;         // counts how many kans are present
-    fn count_dragons(&self) -> i8;      // counts dragons (in pair and melds)
-    fn count_winds(&self) -> i8;        // counts all winds (in pair and melds)
-    fn has_any_honor(&self) -> bool;    // checks for honor tiles
-    fn has_any_terminal(&self) -> bool; // checks for terminal tiles (1 & 9)
-    fn has_any_simple(&self) -> bool;   // checks for simple tiles (2-8)
-    fn only_sequences(&self) -> Vec<Meld>;      // returns only sequences
-    fn without_sequences(&self) -> Vec<Meld>;   // returns only triplets and kans
-    fn as_tiles(&self) -> Vec<Tile>;   // pulls tiles out of melds/pairs into an array
-    fn only_closed(&self) -> Vec<MeldOrPair>;   // only the closed part of the hand
+pub trait HandHelpers {
+    // I'm using this trait for both FullHand and [Pair];
+    // functions which don't apply to [Pair] have a default implementation that just panics.
+    // doing it this way feels a bit tidier.
+    fn count_suits(&self) -> i8 {panic!()}         // count how many suits are present
+    fn count_sequence_suits(&self) -> i8 {panic!()}// ... or just the ones in sequences
+    fn count_triplet_suits(&self) -> i8 {panic!()} // ... or just the ones in triplets
+    fn count_sequences(&self) -> i8 {panic!()}     // counts how many sequences are present
+    fn count_triplets(&self) -> i8 {panic!()}      // counts how many triplets are present
+    fn count_kans(&self) -> i8 {panic!()}          // counts how many kans are present
+    fn count_dragons(&self) -> i8;          // counts types of dragon (in pair and melds)
+    fn count_winds(&self) -> i8;            // counts types of wind (in pair and melds)
+    fn has_any_honor(&self) -> bool;        // checks for honor tiles
+    fn has_any_terminal(&self) -> bool;     // checks for terminal tiles (1 & 9)
+    fn has_any_simple(&self) -> bool;       // checks for simple tiles (2-8)
+    fn only_sequences(&self) -> Vec<Meld> {panic!()}    // returns only sequences
+    fn without_sequences(&self) -> Vec<Meld> {panic!()} // returns only triplets and kans
+    fn as_tiles(&self) -> Vec<Tile>;        // pulls tiles out of melds/pairs into an array
+    fn only_closed(&self) -> Vec<MeldOrPair> {panic!()} // only the closed part of the hand
 } 
 
 impl HandHelpers for FullHand {
+    fn count_suits(&self) -> i8 {
+        let mut suits: Vec<Suit> = vec![];
+        if let Tile::Number {suit, ..} = self.pair.tile { suits.push(suit) }
+        for meld in self.melds { 
+            if let Suit = meld.get_suit().unwrap() { 
+                if !suits.contains(&Suit) { suits.push(Suit) } } }
+        suits.len() as i8
+    }
     fn count_sequences(&self) -> i8 {
-        let mut seqs: i8 = 0;
-        for meld in self.melds {
-            if let Meld::Sequence{..} = meld { seqs += 1 }
-        }
-        seqs
+        self.only_sequences().len() as i8
     }
     fn count_sequence_suits(&self) -> i8 {
         let mut suits: Vec<Suit> = vec![];
         for meld in self.only_sequences() {
-
-        }
+            if let Suit = meld.get_suit().unwrap() { 
+                if !suits.contains(&Suit) { suits.push(Suit) } } }
         suits.len() as i8
     }
     fn count_triplet_suits(&self) -> i8 {
         let mut suits: Vec<Suit> = vec![];
         for meld in self.without_sequences() {
-
-        }
+            if let Suit = meld.get_suit().unwrap() { 
+                if !suits.contains(&Suit) { suits.push(Suit) } } }
         suits.len() as i8
     }
     fn count_triplets(&self) -> i8 {
@@ -322,62 +431,52 @@ impl HandHelpers for FullHand {
         for meld in self.melds {
             match meld {
                 Meld::Triplet {..} | Meld::Kan {..} => trips += 1,
-                _ => ()
-            }
-        }
+                _ => () } }
         trips
     }
     fn count_kans(&self) -> i8 {
         let mut kans: i8 = 0;
         for meld in self.melds {
-            if let Meld::Kan{..} = meld { kans += 1 }
-        }
+            if let Meld::Kan{..} = meld { kans += 1 } }
         kans
     }
     fn count_dragons(&self) -> i8 {
         let mut dragons: i8 = 0;
         for meld in &self.melds {
-            if meld.is_dragon() { dragons += 1 }
-        }
+            if meld.is_dragon() { dragons += 1 } }
         dragons
     }
     fn count_winds(&self) -> i8 {
         let mut winds: i8 = 0;
         for meld in &self.melds {
-            if meld.is_wind() { winds += 1 }
-        }
+            if meld.is_wind() { winds += 1 } }
         winds
     }
     fn has_any_honor(&self) -> bool {
         for meld in &self.melds {
-            if meld.has_honor() { return true }
-        }
+            if meld.has_honor() { return true } }
         false
     }
     fn has_any_terminal(&self) -> bool {
         for meld in &self.melds {
-            if meld.has_terminal() { return true }
-        }
+            if meld.has_terminal() { return true } }
         false
     }
     fn has_any_simple(&self) -> bool {
         for meld in &self.melds {
-            if !meld.has_honor() && !meld.has_terminal() { return true }
-        }
+            if !meld.has_honor() && !meld.has_terminal() { return true } }
         false
     }
     fn only_sequences(&self) -> Vec<Meld> {
         let mut vec: Vec<Meld> = vec![];
         for meld in &self.melds {
-            if let &Meld::Sequence {..} = meld { vec.push(*meld) }
-        }
+            if let &Meld::Sequence {..} = meld { vec.push(*meld) } }
         vec
     }
     fn without_sequences(&self) -> Vec<Meld> {
         let mut vec: Vec<Meld> = vec![];
         for meld in &self.melds {
-            if let &Meld::Sequence {..} = meld { vec.push(*meld) }
-        }
+            if let &Meld::Sequence {..} = meld { } else { vec.push(*meld) } }
         vec
     }
 
@@ -387,16 +486,12 @@ impl HandHelpers for FullHand {
         for meld in self.melds {
             match meld {
                 Meld::Sequence {tiles, ..} => {
-                    vec.push(tiles[0]); vec.push(tiles[1]); vec.push(tiles[2]);
-                },
+                    vec.push(tiles[0]); vec.push(tiles[1]); vec.push(tiles[2]); },
                 Meld::Triplet {tile, ..} => {
-                    for _ in 0..3 { vec.push(tile); }
-                },
+                    for _ in 0..3 { vec.push(tile); } },
                 Meld::Kan {tile, ..} => {
-                    for _ in 0..4 { vec.push(tile); }
-                },
-            }
-        }
+                    for _ in 0..4 { vec.push(tile); } },
+        } }
         vec
     }
 
@@ -407,9 +502,45 @@ impl HandHelpers for FullHand {
             match meld {
                 Meld::Triplet {open, ..} | Meld::Kan {open, ..} | Meld::Sequence {open, ..}
                     => if !open { vec.push(MeldOrPair::Meld(meld))},
-                _ => ()
-            }
-        }
+        } }
+        vec
+    }
+}
+
+impl HandHelpers for [Pair] {
+    fn count_suits(&self) -> i8 {
+        let mut suits: Vec<Suit> = vec![];
+        for pair in self { 
+            if let Tile::Number {suit,..} = pair.tile { 
+                if !suits.contains(&suit) { suits.push(suit) } } }
+        suits.len() as i8
+    }
+    fn count_dragons(&self) -> i8 {
+        let mut count: i8 = 0;
+        for pair in self { if pair.tile.is_dragon() { count += 1 } }
+        count
+    }
+    fn count_winds(&self) -> i8 {
+        let mut count: i8 = 0;
+        for pair in self { if pair.tile.is_wind() { count += 1 } }
+        count
+    }
+    fn has_any_honor(&self) -> bool {
+        for pair in self { if pair.tile.is_honor() { return true } }
+        return false 
+    }
+    fn has_any_terminal(&self) -> bool {
+        for pair in self { if pair.tile.is_terminal() { return true } }
+        return false 
+    }
+    fn has_any_simple(&self) -> bool {
+        for pair in self {
+            if !pair.tile.is_honor() && !pair.tile.is_terminal() { return true } }
+        return false 
+    }
+    fn as_tiles(&self) -> Vec<Tile> {
+        let mut vec: Vec<Tile> = vec![];
+        for pair in self { vec.push(pair.tile); vec.push(pair.tile); }
         vec
     }
 }
@@ -420,6 +551,7 @@ pub trait MeldHelpers {
     fn is_dragon(&self) -> bool;
     fn is_wind(&self) -> bool;
     fn contains_tile(&self, tile: Tile) -> bool;
+    fn get_suit(&self) -> Result<Suit, ScoringError>;
 }
 
 impl MeldHelpers for Meld {
@@ -456,7 +588,6 @@ impl MeldHelpers for Meld {
             Meld::Triplet {open, tile} => {
                 tile.is_terminal()
             },
-            _ => false,
         }
     }
     fn is_dragon(&self) -> bool {
@@ -486,6 +617,17 @@ impl MeldHelpers for Meld {
             }
         }
     }
+    fn get_suit(&self) -> Result<Suit, ScoringError> {
+        match self {
+            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => {
+                if let Tile::Number {suit, ..} = *tile { return Ok(suit) }
+            }
+            Meld::Sequence {tiles, ..} => {
+                if let Tile::Number {suit, ..} = tiles[0] { return Ok(suit) }
+            }
+        }
+        Err(ScoringError::TileError)
+    }
 }
 
 impl MeldHelpers for Pair {
@@ -506,6 +648,10 @@ impl MeldHelpers for Pair {
     }
     fn contains_tile(&self, t: Tile) -> bool {
         self.tile == t
+    }
+    fn get_suit(&self) -> Result<Suit, ScoringError> {
+        if let Tile::Number {suit, ..} = self.tile { return Ok(suit) }
+        else { Err(ScoringError::TileError) }
     }
 }
 
@@ -554,25 +700,46 @@ impl VecTileHelpers for Vec<Tile> {
     }
 }
 
+// TODO
+impl fmt::Display for Hand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Hand::Standard {full_hand, winning_tile, yaku, ..} => {
+                write!(f, "standard",)
+            },
+            Hand::Chiitoi {full_hand, winning_tile, yaku, ..} => {
+                write!(f, "chiitoi",)
+            },
+            Hand::Kokushi {full_hand, winning_tile, yaku, ..} => {
+                write!(f, "kokushi",)
+            }
+        }
+    }
+}
+
+///////////
+// tests //
+///////////
+
 mod tests {
     use super::*;
-    use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, DoraOf};
+    use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string};
 
     #[test]
     fn test_reading_hand_composition(){
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("dw,dw,dw,we,we,we").unwrap(), 0, 0, 2).unwrap(),
+        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,dw,we,we,we").unwrap(), 0, 0, 2).unwrap(),
             vec![PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }), 
                                           MeldOrPair::Meld(Meld::Triplet{tile: Tile::Wind(Wind::East), open: false })])]
             );
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("dw,dw,dw,we,we").unwrap(), 0, 1, 2).unwrap(),
+        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,dw,we,we").unwrap(), 0, 1, 2).unwrap(),
             vec![PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }), 
                                           MeldOrPair::Pair(Pair{tile: Tile::Wind(Wind::East) }) ] )]
             );
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("dw,dw,we,we,we").unwrap(), 0, 1, 2).unwrap(),
+        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,we,we,we").unwrap(), 0, 1, 2).unwrap(),
             vec![PartialHand::Valid(vec![ MeldOrPair::Pair(Pair{tile: Tile::Dragon(Dragon::White) }),
                                           MeldOrPair::Meld(Meld::Triplet{tile: Tile::Wind(Wind::East), open: false }), ] )]
             );
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("m1,m2,m3,p4,p5r,p3").unwrap(), 0, 0, 2).unwrap(),
+        assert_eq!(compose_tiles(make_tiles_from_string("m1,m2,m3,p4,p5r,p3").unwrap(), 0, 0, 2).unwrap(),
             vec![PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
                                                                                   Tile::Number{ suit: Suit::Man, number: 2, red: false },
                                                                                   Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
@@ -580,7 +747,7 @@ mod tests {
                                                                                   Tile::Number{ suit: Suit::Pin, number: 4, red: false },
                                                                                   Tile::Number{ suit: Suit::Pin, number: 5, red: true } ], open: false}) ])]
             );
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("dw,dr,p4,dw,p5r,p3,dr,dw,m2,m2,m2,m2").unwrap(), 1, 1, 4).unwrap(), 
+        assert_eq!(compose_tiles(make_tiles_from_string("dw,dr,p4,dw,p5r,p3,dr,dw,m2,m2,m2,m2").unwrap(), 1, 1, 4).unwrap(), 
             vec![PartialHand::Valid(vec![ MeldOrPair::Pair(Pair{tile: Tile::Dragon(Dragon::Red) }),
                                           MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }),
                                           MeldOrPair::Meld(Meld::Kan{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false}, open: false }),
@@ -588,23 +755,62 @@ mod tests {
                                                                                   Tile::Number{ suit: Suit::Pin, number: 4, red: false },
                                                                                   Tile::Number{ suit: Suit::Pin, number: 5, red: true } ], open: false}) ] )] 
             );
-        assert_eq!(compose_tiles(crate::tiles::make_tiles_from_string("m1,m1,m1,m2,m2,m2,m3,m3,m3").unwrap(), 0, 0, 3).unwrap(),
-        vec![PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, open: false }),
-                                      MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false }, open: false }),
-                                      MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 3, red: false }, open: false }) ]),
-             PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
-                                      MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
-                                      MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                                              Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),])]
+        assert_eq!(compose_tiles(make_tiles_from_string("m1,m1,m1,m2,m2,m2,m3,m3,m3").unwrap(), 0, 0, 3).unwrap(),
+            vec![PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, open: false }),
+                                        MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false }, open: false }),
+                                        MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 3, red: false }, open: false }) ]),
+                PartialHand::Valid(vec![ MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 2, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
+                                        MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 2, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
+                                        MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 2, red: false },
+                                                                                Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),])]
             );
+        
+        
     }
 
     #[test]
+    fn test_reading_kokushi(){
+        let mut hand: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South).unwrap();
+
+        assert!(matches!(hand, Hand::Kokushi {..}));
+        assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
+                                        winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false },
+                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait]});
+
+        let hand = compose_hand(crate::tiles::make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South).unwrap();
+        assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
+                                        winning_tile: Tile::Number{ suit: Suit::Man, number: 9, red: false },
+                                        yaku: vec![Yaku::Kokushi]});
+    
+    }
+
+    #[test]
+    fn test_reading_chiitoi(){
+        assert!(matches!(compose_hand(make_tiles_from_string("m1,m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5").unwrap().try_into().unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap(), Hand::Chiitoi {..}));
+        
+        let mut chiitoi_yaku = compose_hand(make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6").unwrap().try_into().unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+        assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Tanyao]);
+
+        chiitoi_yaku = compose_hand(make_tiles_from_string("m1,m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr").unwrap().try_into().unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+        assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Honro]);
+
+        chiitoi_yaku = compose_hand(make_tiles_from_string("dw,dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn").unwrap().try_into().unwrap(),
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+        assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Daichiishin])
+    }
+
+    #[test]
+    #[ignore]
     fn test_dora_count(){
         //TODO: add test cases once I don't need to manually generate hands
     }

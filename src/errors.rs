@@ -7,7 +7,8 @@ pub mod errors {
         ParseError(ParsingError),
         TileError,
         WrongPipeline, // nagashi mangan shouldn't go through the normal scoring pipeline
-        Unimplemented
+        Unimplemented,
+        NoHands
     }
 
     #[derive(Debug, PartialEq)]
