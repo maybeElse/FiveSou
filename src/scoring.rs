@@ -6,14 +6,11 @@ use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Mel
 #[derive(Debug, PartialEq)]
 pub enum Payment{
     DealerTsumo(i32),
-    Tsumo(PaymentSplit),
+    Tsumo {
+        dealer: i32,
+        non_dealer: i32
+    },
     Ron(i32)
-}
-
-#[derive(Debug, PartialEq)]
-pub struct PaymentSplit{
-    pub dealer: i32,
-    pub non_dealer: i32,
 }
 
 pub fn count_han(
@@ -65,7 +62,7 @@ pub fn count_han(
             Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
 
             // yakuman hands
-            Yaku::Daisushi | Yaku::Daichiishin => han_count += 26, // double yakuman
+            Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => han_count += 26, // double yakuman
             _ if YAKUMAN.contains(&yaku) => han_count += 13,
             _ => panic!(),
         }
@@ -80,40 +77,47 @@ pub fn count_fu(
     match hand {
         Hand::Standard {full_hand, winning_tile, open, yaku} => {
             let mut fu: i8 = 20;                                // 20 fu for winning
+
             if let WinType::Ron = win_type { 
                 fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
                     else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
                     else { 0 }
-            } 
-            else if !yaku.contains(&Yaku::Pinfu) { fu += 2 }    // 2 fu for tsumo, but not if it's pinfu
-
+            } else if !yaku.contains(&Yaku::Pinfu) { fu += 2 }  // 2 fu for tsumo, but not if it's pinfu
             if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
-            else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind || w == seat_wind { 2 } else { 0 } }
+            else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
+                else if w == round_wind || w == seat_wind { 2 } else { 0 } }
 
             for meld in full_hand.melds {
                 match meld {
-                    Meld::Triplet {open, ..} => fu += if meld.has_honor() || meld.has_terminal() {
-                        if open { 4 } else { 8 }                // open honor/terminal triplets get 4, closed get 8
-                    } else { if open { 2 } else { 4 } },        // open simple triplets get 2, closed get 4
+                    Meld::Triplet {open, tile} => {
+                        if meld.has_honor() {                   // open honor triplets get 4, closed get 8
+                            fu += if open || tile == winning_tile { 4 } else { 8 }  // calling a tile to finish the meld opens it
+                        } else if tile == winning_tile && !open && !full_hand.only_sequences().iter().any(  // this complicates numbered tiles
+                            |&x| x.contains_tile(tile) && x.is_closed()){       // if there's no case which would justify a different wait,
+                            if let WinType::Ron = win_type { // (and a ron opened part of the hand
+                                fu += if meld.has_terminal() { 4 } else { 2 }   // then treat the meld as if it's open.
+                            } else {  fu += if meld.has_terminal() { 8 } else { 4 } }   // ... but a tsumo doesn't open the meld.
+                        } else {
+                            fu += if meld.has_terminal() { if open { 4 } else { 8 } // open terminal triplets get 4, closed get 8
+                                } else { if open { 2 } else { 4 } }                 // open simple triplets get 2, closed get 4
+                    } } 
                     Meld::Kan {open, ..} => fu += if meld.has_honor() || meld.has_terminal() {
                         if open { 16 } else { 32 }              // open honor/terminal kans get 16, closed get 32
                     } else { if open { 8 } else { 16 } },       // open simple kans get 8, closed get 16
                     Meld::Sequence {..} => (),                  // sequences get nothing
-                }
-            }
+            } }
 
             for meld in full_hand.only_closed() {
                 match meld {                                    // 2 fu for certain wait shapes:
                     MeldOrPair::Pair(p) => if p.contains_tile(winning_tile) { fu += 2; break }, // pair wait
                     MeldOrPair::Meld(m) => { match m {
                         Meld::Sequence {tiles, ..} => { if m.contains_tile(winning_tile) { 
-                            if m.is_middle(winning_tile) { fu += 2; break } else if m.has_terminal() { fu += 2; break }
-                        }}, // through-shot waits (ie 24 waiting on 3) and waits against a terminal (ie 12 waiting on 3)
+                            if m.is_middle(winning_tile) { fu += 2; break 
+                            } else if m.has_terminal() && !winning_tile.is_terminal() { fu += 2; break }
+                        } }, // through-shot waits (ie 24 waiting on 3) and waits against a terminal (ie 12 waiting on 3)
                         _ => (),
-                    }}
-                }
-            }
-            Ok(fu + (10 - (fu % 10))) // round up to nearest 10
+            } } } }
+            Ok( round_tens(fu) ) // round up to nearest 10
         },
         Hand::Chiitoi {..} => Ok(25),
         Hand::Kokushi {..} => Ok(20), // fu isn't counted for kokushi, so the number doesn't matter
@@ -147,16 +151,26 @@ pub fn calc_player_split(
 ) -> Result<Payment, ScoringError> {
     match win_type {
         WinType::Tsumo => {
-            if is_dealer { Ok(Payment::DealerTsumo(base * 2)) }
-            else { Ok(Payment::Tsumo(PaymentSplit{dealer: 2 * base, non_dealer: base})) }
+            if is_dealer { Ok(Payment::DealerTsumo( round_hundreds(base * 2) )) }
+            else { Ok(Payment::Tsumo{dealer: round_hundreds(base * 2), non_dealer: round_hundreds(base) }) }
         }
-        WinType::Ron => Ok(Payment::Ron(base * {if is_dealer {6} else {4}}))
+        WinType::Ron => Ok(Payment::Ron(round_hundreds(base * {if is_dealer {6} else {4}})))
     }
+}
+
+fn round_tens(n: i8) -> i8 { round_nonzero(n as i32, 10) as i8 }
+
+fn round_hundreds(n: i32) -> i32 { round_nonzero(n, 100) }
+
+fn round_nonzero(n: i32, p: i32) -> i32 {
+    n + {if (n % p) > 0 { p - (n % p) } else { 0 }}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hand::compose_hand;
+    use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string};
 
     #[test]
     #[ignore]
@@ -193,7 +207,7 @@ mod tests {
     #[test]
     fn bp_and_split_calc(){
         assert_eq!(calc_player_split(calc_base_points(4, 40).unwrap(), false, WinType::Tsumo, 0).unwrap(),
-                    Payment::Tsumo(PaymentSplit{dealer: 4000, non_dealer: 2000}));
+                    Payment::Tsumo{dealer: 4000, non_dealer: 2000});
         assert_eq!(calc_player_split(calc_base_points(2, 50).unwrap(), true, WinType::Tsumo, 0).unwrap(),
                     Payment::DealerTsumo(1600));
         assert_eq!(calc_player_split(calc_base_points(3, 70).unwrap(), true, WinType::Ron, 0).unwrap(),
