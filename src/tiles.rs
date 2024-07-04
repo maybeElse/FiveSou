@@ -31,35 +31,36 @@ pub enum Wind {East, South, West, North,}
 ///////////////
 
 pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, ScoringError> {
-    let mut vec: Vec<Tile> = Vec::new();
-    let mut hand: Vec<&str> = str.split(',').collect::<Vec<&str>>();
-    hand.sort();
-    for tile in hand {
-        vec.push(Tile::from_string(tile)?);
+    let mut tiles: Vec<Tile> = vec![];
+    let mut input: Vec<&str> = str.split(',').collect();
+    input.sort();
+    for tile in input {
+        tiles.push(Tile::from_string(tile)?);
     }
-    Ok(vec)   
+    Ok(tiles)   
 }
 
 ////////////
 // traits //
 ////////////
 
-trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
-trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
-trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+pub trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+pub trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
+pub trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
 pub trait TileHelpers {
     fn is_numbered(&self) -> bool;
     fn is_terminal(&self) -> bool;
     fn is_honor(&self) -> bool;
     fn is_wind(&self) -> bool;
     fn is_dragon(&self) -> bool;
+    fn is_pure_green(&self) -> bool;
     fn adjacent_all(&self) -> Vec<[Tile; 2]>;
     fn adjacent_up(&self) -> Option<[Tile; 2]>;
     fn adjacent_down(&self) -> Option<[Tile; 2]>;
     fn adjacent_around(&self) -> Option<[Tile; 2]>;
     fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
-    fn get_number(&self) -> Result<i8, ScoringError>;
-    fn dora (self: &Self) -> Tile;
+    fn get_number(&self) -> Result<u8, ScoringError>;
+    fn dora(self: &Self) -> Tile;
 }
 
 impl FromString for Tile {
@@ -147,6 +148,13 @@ impl TileHelpers for Tile {
     fn is_dragon(&self) -> bool {
         if let Tile::Dragon {..} = self { true } else { false }
     }
+    fn is_pure_green(&self) -> bool {
+        match self {
+            Tile::Dragon(dragon) => if let Dragon::Green = dragon { true } else { false },
+            Tile::Wind(_) => false,
+            Tile::Number {suit, number, ..} => if let Suit::Sou = suit { [2,3,4,6,8].contains(number) } else { false }
+        }
+    }
     fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
         let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
         let mut vec: Vec<[Tile; 2]> = vec![];
@@ -186,8 +194,8 @@ impl TileHelpers for Tile {
         ];
         adj
     }
-    fn get_number(&self) -> Result<i8, ScoringError> {
-        if let Tile::Number {number, ..} = self { Ok(*number) } else { Err(ScoringError::TileError) }
+    fn get_number(&self) -> Result<u8, ScoringError> {
+        if let Tile::Number {number, ..} = self { Ok(*number as u8) } else { Err(ScoringError::TileError) }
     }
     fn dora (self: &Self) -> Tile {
         match self {
