@@ -466,57 +466,57 @@ mod tests {
         use crate::tiles::FromString;
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m3,m4,p5,p6,p7,p4,p5,p6,s3,s4,s5,m7,m7").unwrap(),
-            None, Tile::from_string("m4").unwrap(), WinType::Tsumo, Wind::East, Wind::South).unwrap();
+            None, Tile::from_string("m4").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Tanyao, Yaku::Pinfu]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s3,s4,p2,p3,p4,p9,p9").unwrap(),
-            None, Tile::Number{ suit: Suit::Man, number: 4, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+            None, Tile::Number{ suit: Suit::Man, number: 4, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Pinfu, Yaku::Ipeiko, Yaku::Sanshoku]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s3,s4,p2,p2,p2,p8,p8").unwrap(),
-            None, Tile::from_string("m4").unwrap(), WinType::Ron, Wind::East, Wind::South).unwrap();
+            None, Tile::from_string("m4").unwrap(), WinType::Ron, Wind::East, Wind::South, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao, Yaku::Ipeiko, Yaku::Sanshoku]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p2,p3,p4,p4,p4,p5,p6,p7,p8,s2,s3,s4,p9").unwrap(),
-            None, Tile::from_string("p9").unwrap(), WinType::Tsumo, Wind::East, Wind::East).unwrap();
+            None, Tile::from_string("p9").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Pinfu, Yaku::Ittsuu]);
         assert_eq!(hand.is_closed(), true);
         assert_eq!(scoring::count_han(hand.get_yaku(), vec![], 0, hand.is_closed()), Ok(4));
         assert_eq!(scoring::count_fu(hand, WinType::Tsumo, Wind::East, Wind::East), Ok(20));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,p3,p3,p5,p5,s6,s6,s7,s7,s8,s8").unwrap(),
-            None, Tile::from_string("s7").unwrap(), WinType::Tsumo, Wind::East, Wind::East).unwrap();
+            None, Tile::from_string("s7").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Chiitoi, Yaku::ClosedTsumo, Yaku::Tanyao]);
         assert_eq!(hand.is_closed(), true);
         assert_eq!(scoring::count_han(hand.get_yaku(), vec![], 0, hand.is_closed()), Ok(4));
         assert_eq!(scoring::count_fu(hand, WinType::Tsumo, Wind::East, Wind::East), Ok(25));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m3,m5,m6,m7,m8,m8,m8,m3").unwrap(),
-            hand::make_melds_from_string("p8,p8,p8|m2,m2,m2", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East).unwrap();
+            hand::make_melds_from_string("p8,p8,p8|m2,m2,m2", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao]);
         assert_eq!(hand.is_closed(), false);
         assert_eq!(scoring::count_han(hand.get_yaku(), vec![], 0, hand.is_closed()), Ok(1));
         assert_eq!(scoring::count_fu(hand, WinType::Tsumo, Wind::East, Wind::East), Ok(40));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p2,p2,p2,we,we").unwrap(),
-            hand::make_melds_from_string("m8,m8,m8|p3,p3,p3|s8,s8,s8", true), Tile::from_string("p2").unwrap(), WinType::Ron, Wind::South, Wind::East).unwrap();
+            hand::make_melds_from_string("m8,m8,m8|p3,p3,p3|s8,s8,s8", true), Tile::from_string("p2").unwrap(), WinType::Ron, Wind::South, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Toitoi]);
         assert_eq!(scoring::count_han(hand.get_yaku(), vec![], 0, hand.is_closed()), Ok(2));
         assert_eq!(scoring::count_fu(hand, WinType::Ron, Wind::South, Wind::East), Ok(30));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p2,p3,p4,p5,p6,p7,p7,p7,we,we").unwrap(),
-            hand::make_melds_from_string("ws,ws,ws", true), Tile::from_string("p1").unwrap(), WinType::Tsumo, Wind::South, Wind::East).unwrap();
+            hand::make_melds_from_string("ws,ws,ws", true), Tile::from_string("p1").unwrap(), WinType::Tsumo, Wind::South, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Honitsu, Yaku::Yakuhai(1)]);
         assert_eq!(scoring::count_han(hand.get_yaku(), vec![], 0, hand.is_closed()), Ok(3));
         assert_eq!(scoring::count_fu(hand, WinType::Ron, Wind::South, Wind::East), Ok(30));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p2,p3,p3,p4,p4,p5,p5,p2").unwrap(),
-        hand::make_melds_from_string("s8,s8,s8|(s7,s7,s7,s7)", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East).unwrap();
+        hand::make_melds_from_string("s8,s8,s8|(s7,s7,s7,s7)", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao]);
         assert_eq!(scoring::count_fu(hand, WinType::Tsumo, Wind::East, Wind::East), Ok(50));
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m1,m2,m3,m4,m4,m5,m6,m7,s8,s8,s8").unwrap(),
-        hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East).unwrap();
+        hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Yakuhai(2)]);
         assert_eq!(scoring::count_fu(hand, WinType::Tsumo, Wind::East, Wind::East), Ok(50));
     }

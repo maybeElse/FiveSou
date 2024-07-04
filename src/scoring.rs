@@ -75,14 +75,15 @@ pub fn count_fu(
     hand: Hand, win_type: WinType, round_wind: Wind, seat_wind: Wind
 ) -> Result<i8, ScoringError>{
     match hand {
-        Hand::Standard {full_hand, winning_tile, open, yaku} => {
+        Hand::Standard {full_hand, winning_tile, open, yaku, special_yaku} => {
             let mut fu: i8 = 20;                                // 20 fu for winning
 
             if let WinType::Ron = win_type { 
                 fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
                     else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
                     else { 0 }
-            } else if !yaku.contains(&Yaku::Pinfu) { fu += 2 }  // 2 fu for tsumo, but not if it's pinfu
+            } else if !yaku.contains(&Yaku::Pinfu) && !special_yaku.unwrap_or(vec![]).contains(&YakuSpecial::AfterKan) 
+                    { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan
             if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
             else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
                 else if w == round_wind || w == seat_wind { 2 } else { 0 } }

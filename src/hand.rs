@@ -16,17 +16,20 @@ pub enum Hand {
         full_hand: FullHand,
         winning_tile: Tile,
         open: bool,
-        yaku: Vec<Yaku>
+        yaku: Vec<Yaku>,
+        special_yaku: Option<Vec<YakuSpecial>>
     },
     Chiitoi{
         full_hand: [Pair; 7],
         winning_tile: Tile,
-        yaku: Vec<Yaku>
+        yaku: Vec<Yaku>,
+        special_yaku: Option<Vec<YakuSpecial>>
     },
     Kokushi{
         full_hand: [Tile; 14],
         winning_tile: Tile,
-        yaku: Vec<Yaku>
+        yaku: Vec<Yaku>,
+        special_yaku: Option<Vec<YakuSpecial>>
     },
 }
 
@@ -109,6 +112,7 @@ pub fn compose_hand(
     closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
     // stuff we need for yaku testing
     winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
+    special_yaku: Option<Vec<YakuSpecial>>
 ) -> Result<Hand, ScoringError> {
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
@@ -122,7 +126,8 @@ pub fn compose_hand(
             return Ok(Hand::Kokushi{
                 full_hand: closed_tiles.try_into().unwrap(),
                 winning_tile: winning_tile,
-                yaku: kokushi.unwrap()
+                yaku: kokushi.unwrap(),
+                special_yaku: special_yaku.clone()
             })
         }
         // seven pairs
@@ -133,6 +138,7 @@ pub fn compose_hand(
                     full_hand: chiitoi.unwrap().try_into().unwrap(),
                     winning_tile: winning_tile, 
                     yaku: yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, win_type)?,
+                    special_yaku: special_yaku.clone()
                 }
             );
         }
@@ -164,6 +170,7 @@ pub fn compose_hand(
                     yaku: yaku::find_yaku_standard(
                         hand, winning_tile, is_open, 
                         seat_wind, round_wind, win_type)?,
+                    special_yaku: special_yaku.clone()
                 }
             )
         }
@@ -875,35 +882,35 @@ mod tests {
     #[test]
     fn test_reading_kokushi(){
         let hand: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South, None).unwrap();
 
         assert!(matches!(hand, Hand::Kokushi {..}));
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait]});
+                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], special_yaku: None});
 
         let hand: Hand = compose_hand(crate::tiles::make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South, None).unwrap();
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 9, red: false },
-                                        yaku: vec![Yaku::Kokushi]});  
+                                        yaku: vec![Yaku::Kokushi], special_yaku: None});  
     }
 
     #[test]
     fn test_reading_chiitoi(){
         assert!(matches!(compose_hand(make_tiles_from_string("m1,m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap(), Hand::Chiitoi {..}));
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap(), Hand::Chiitoi {..}));
         
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Tanyao]);
 
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Honro]);
 
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("dw,dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Daichiishin]);                      
     }
 

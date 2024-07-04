@@ -59,7 +59,7 @@ fn score_hand_from_structs(
     repeats: i8
 ) -> Result<Payment, ScoringError> {
     let hand: Hand = hand::compose_hand(
-        closed_tiles, called_tiles, winning_tile, win_type, seat_wind, round_wind
+        closed_tiles, called_tiles, winning_tile, win_type, seat_wind, round_wind, if special_yaku.is_empty() { None } else { Some(special_yaku.clone()) }
     )?;
     if special_yaku.contains(&YakuSpecial::NagashiMangan) {
         scoring::calc_player_split(2000, seat_wind == Wind::East, WinType::Tsumo, repeats)
