@@ -8,7 +8,8 @@ pub mod errors {
         TileError,
         WrongPipeline, // nagashi mangan shouldn't go through the normal scoring pipeline
         Unimplemented,
-        NoHands
+        NoHands,
+        WrongMeldType,
     }
 
     #[derive(Debug, PartialEq)]
