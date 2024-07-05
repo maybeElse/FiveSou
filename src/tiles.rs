@@ -93,8 +93,7 @@ impl FromString for Tile {
                 }},
             _ => Err(ScoringError::ParseError(ParsingError::BadString)),
         }
-    }
-}
+} }
 
 impl FromChar for Dragon {
     fn from_char(char: char) -> Result<Self, ScoringError> {
@@ -115,9 +114,7 @@ impl FromChar for Wind {
             'w' => Ok(Wind::West),
             'n' => Ok(Wind::North),
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
-        }
-    }
-}
+} } }
 
 impl FromChar for Suit {
     fn from_char(char: char) -> Result<Self, ScoringError> {
@@ -126,9 +123,7 @@ impl FromChar for Suit {
             'm' => Ok(Suit::Man),
             's' => Ok(Suit::Sou),
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
-        }
-    }
-}
+} } }
 
 impl TileHelpers for Tile {
     fn is_numbered(&self) -> bool {
