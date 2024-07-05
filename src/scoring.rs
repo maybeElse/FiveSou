@@ -14,8 +14,8 @@ pub enum Payment{
 }
 
 pub fn count_han(
-    yaku_normal: Vec<Yaku>,
-    yaku_special: Vec<YakuSpecial>,
+    yaku_normal: &Vec<Yaku>,
+    yaku_special: &Vec<YakuSpecial>,
     dora: i8,
     closed: bool,
 ) -> Result<i8, ScoringError>{
@@ -62,8 +62,8 @@ pub fn count_han(
             Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
 
             // yakuman hands
-            Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => han_count += 26, // double yakuman
-            _ if YAKUMAN.contains(&yaku) => han_count += 13,
+            Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => han_count += 26 - (han_count % 13), // double yakuman
+            _ if YAKUMAN.contains(&yaku) => han_count += 13 - (han_count % 13), // try to filter out any non-yakuman han
             _ => panic!(),
         }
     }
@@ -72,57 +72,52 @@ pub fn count_han(
 }
 
 pub fn count_fu(
-    hand: Hand, win_type: WinType, round_wind: Wind, seat_wind: Wind
-) -> Result<i8, ScoringError>{
-    match hand {
-        Hand::Standard {full_hand, winning_tile, open, yaku, special_yaku} => {
-            let mut fu: i8 = 20;                                // 20 fu for winning
+    full_hand: &FullHand, winning_tile: &Tile, open: bool, yaku: &Vec<Yaku>, special_yaku: &Vec<YakuSpecial>,
+    win_type: WinType, round_wind: Wind, seat_wind: Wind
+) -> Result<i8, ScoringError> {
+    let mut fu: i8 = 20;                                // 20 fu for winning
 
-            if let WinType::Ron = win_type { 
-                fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
-                    else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
-                    else { 0 }
-            } else if !yaku.contains(&Yaku::Pinfu) && !special_yaku.unwrap_or(vec![]).contains(&YakuSpecial::AfterKan) 
-                    { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan
-            if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
-            else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
-                else if w == round_wind || w == seat_wind { 2 } else { 0 } }
+    if let WinType::Ron = win_type { 
+        fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
+            else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
+            else { 0 }
+    } else if !yaku.contains(&Yaku::Pinfu) && !special_yaku.contains(&YakuSpecial::AfterKan) 
+            { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan
+    if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
+    else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
+        else if w == round_wind || w == seat_wind { 2 } else { 0 } }
 
-            for meld in full_hand.melds {
-                match meld {
-                    Meld::Triplet {open, tile} => {
-                        if meld.has_honor() {                   // open honor triplets get 4, closed get 8
-                            fu += if open || tile == winning_tile { 4 } else { 8 }  // calling a tile to finish the meld opens it
-                        } else if tile == winning_tile && !open && !full_hand.only_sequences().iter().any(  // this complicates numbered tiles
-                            |&x| x.contains_tile(tile) && x.is_closed()){       // if there's no case which would justify a different wait,
-                            if let WinType::Ron = win_type { // (and a ron opened part of the hand
-                                fu += if meld.has_terminal() { 4 } else { 2 }   // then treat the meld as if it's open.
-                            } else {  fu += if meld.has_terminal() { 8 } else { 4 } }   // ... but a tsumo doesn't open the meld.
-                        } else {
-                            fu += if meld.has_terminal() { if open { 4 } else { 8 } // open terminal triplets get 4, closed get 8
-                                } else { if open { 2 } else { 4 } }                 // open simple triplets get 2, closed get 4
-                    } } 
-                    Meld::Kan {open, ..} => fu += if meld.has_honor() || meld.has_terminal() {
-                        if open { 16 } else { 32 }              // open honor/terminal kans get 16, closed get 32
-                    } else { if open { 8 } else { 16 } },       // open simple kans get 8, closed get 16
-                    Meld::Sequence {..} => (),                  // sequences get nothing
-            } }
+    for meld in full_hand.melds {
+        match meld {
+            Meld::Triplet {open, tile} => {
+                if meld.has_honor() {                   // open honor triplets get 4, closed get 8
+                    fu += if open || &tile == winning_tile { 4 } else { 8 }  // calling a tile to finish the meld opens it
+                } else if &tile == winning_tile && !open && !full_hand.only_sequences().iter().any(  // this complicates numbered tiles
+                    |&x| x.contains_tile(&tile) && x.is_closed()){       // if there's no case which would justify a different wait,
+                    if let WinType::Ron = win_type { // (and a ron opened part of the hand
+                        fu += if meld.has_terminal() { 4 } else { 2 }   // then treat the meld as if it's open.
+                    } else {  fu += if meld.has_terminal() { 8 } else { 4 } }   // ... but a tsumo doesn't open the meld.
+                } else {
+                    fu += if meld.has_terminal() { if open { 4 } else { 8 } // open terminal triplets get 4, closed get 8
+                        } else { if open { 2 } else { 4 } }                 // open simple triplets get 2, closed get 4
+            } } 
+            Meld::Kan {open, ..} => fu += if meld.has_honor() || meld.has_terminal() {
+                if open { 16 } else { 32 }              // open honor/terminal kans get 16, closed get 32
+            } else { if open { 8 } else { 16 } },       // open simple kans get 8, closed get 16
+            Meld::Sequence {..} => (),                  // sequences get nothing
+    } }
 
-            for meld in full_hand.only_closed() {
-                match meld {                                    // 2 fu for certain wait shapes:
-                    MeldOrPair::Pair(p) => if p.contains_tile(winning_tile) { fu += 2; break }, // pair wait
-                    MeldOrPair::Meld(m) => { match m {
-                        Meld::Sequence {tiles, ..} => { if m.contains_tile(winning_tile) { 
-                            if m.is_middle(winning_tile) { fu += 2; break 
-                            } else if m.has_terminal() && !winning_tile.is_terminal() { fu += 2; break }
-                        } }, // through-shot waits (ie 24 waiting on 3) and waits against a terminal (ie 12 waiting on 3)
-                        _ => (),
-            } } } }
-            Ok( round_tens(fu) ) // round up to nearest 10
-        },
-        Hand::Chiitoi {..} => Ok(25),
-        Hand::Kokushi {..} => Ok(20), // fu isn't counted for kokushi, so the number doesn't matter
-    }
+    for meld in full_hand.only_closed() {
+        match meld {                                    // 2 fu for certain wait shapes:
+            MeldOrPair::Pair(p) => if p.contains_tile(winning_tile) { fu += 2; break }, // pair wait
+            MeldOrPair::Meld(m) => { match m {
+                Meld::Sequence {tiles, ..} => { if m.contains_tile(winning_tile) { 
+                    if m.is_middle(winning_tile) { fu += 2; break 
+                    } else if m.has_terminal() && !winning_tile.is_terminal() { fu += 2; break }
+                } }, // through-shot waits (ie 24 waiting on 3) and waits against a terminal (ie 12 waiting on 3)
+                _ => (),
+    } } } }
+    Ok( round_tens(fu) ) // round up to nearest 10
 }
 
 pub fn calc_base_points( han: i8, fu: i8 ) -> Result<i32, ScoringError> {
@@ -174,19 +169,22 @@ mod tests {
     use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string};
 
     #[test]
-    #[ignore]
     fn han_counts(){
         assert_eq!(count_han(
-            vec![Yaku::Chiitoi],
-            vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chiitoi],
+            &vec![YakuSpecial::Riichi],
             0, true).unwrap(), 3);
         assert_eq!(count_han(
-            vec![Yaku::Chinroto],
-            vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chinroto],
+            &vec![YakuSpecial::Riichi],
             0, true).unwrap(), 13);
         assert_eq!(count_han(
-            vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen],
-            vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen],
+            &vec![YakuSpecial::Riichi],
+            0, true).unwrap(), 26);
+        assert_eq!(count_han(
+            &vec![Yaku::Daisushi],
+            &vec![YakuSpecial::Riichi],
             0, true).unwrap(), 26);
     }
 

@@ -17,19 +17,25 @@ pub enum Hand {
         winning_tile: Tile,
         open: bool,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>
+        special_yaku: Option<Vec<YakuSpecial>>,
+        han: i8,
+        fu: i8
     },
     Chiitoi{
         full_hand: [Pair; 7],
         winning_tile: Tile,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>
+        special_yaku: Option<Vec<YakuSpecial>>,
+        han: i8,
+        fu: i8
     },
     Kokushi{
         full_hand: [Tile; 14],
         winning_tile: Tile,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>
+        special_yaku: Option<Vec<YakuSpecial>>,
+        han: i8,
+        fu: i8
     },
 }
 
@@ -81,9 +87,8 @@ pub fn make_melds_from_string(
     let mut melds: Vec<Meld> = vec![];
     let input: Vec<&str> = str.split('|').collect();
     for s in input {
-        if s.chars().nth(0) == Some('(') && s.chars().nth(s.len()-1) == Some(')') {
-            let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s[1..(s.len()-1)]);
-            // sanity check
+        if s.chars().nth(0) == Some('!') {
+            let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s[1..]);
             if t.is_ok() {
                 let tiles: Vec<Tile> = t.unwrap();
                 if tiles.count_occurances(tiles[0]) == 4 {
@@ -112,10 +117,15 @@ pub fn compose_hand(
     closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
     // stuff we need for yaku testing
     winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
-    special_yaku: Option<Vec<YakuSpecial>>
+    special_yaku: Option<Vec<YakuSpecial>>, dora_markers: Option<Vec<Tile>>
 ) -> Result<Hand, ScoringError> {
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
+
+    let dora: i8 = if dora_markers.is_none() { 0 } else {
+        let dora: Vec<Tile> = dora_markers.unwrap().iter().map(|x| x.dora()).collect();
+        closed_tiles.iter().fold(0, |acc, x| { if dora.contains(x) { acc + 1 } else { acc } })
+    };
     
     // first of all, test for strange hand shapes
     if closed_tiles.len() == 14 && called_tiles.is_none() {
@@ -127,18 +137,23 @@ pub fn compose_hand(
                 full_hand: closed_tiles.try_into().unwrap(),
                 winning_tile: winning_tile,
                 yaku: kokushi.unwrap(),
-                special_yaku: special_yaku.clone()
+                special_yaku: special_yaku.clone(),
+                han: 13,
+                fu: 20
             })
         }
         // seven pairs
         let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
         if chiitoi.is_some() {
+            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, win_type)?;
             possible_hands.push(
                 Hand::Chiitoi{
                     full_hand: chiitoi.unwrap().try_into().unwrap(),
                     winning_tile: winning_tile, 
-                    yaku: yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, win_type)?,
-                    special_yaku: special_yaku.clone()
+                    yaku: yaku.clone(),
+                    special_yaku: special_yaku.clone(),
+                    han: scoring::count_han(&yaku, &special_yaku.clone().unwrap_or_default(), dora, true)?,
+                    fu: 25
                 }
             );
         }
@@ -149,6 +164,8 @@ pub fn compose_hand(
     let standard_partials: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(closed_tiles, true, (4 - called_tiles.clone().unwrap_or_default().len()) as i8, false);
 
     if standard_partials.is_some() {
+        let sp_yaku: Vec<YakuSpecial> = special_yaku.clone().unwrap_or_default();
+
         for partial in standard_partials.unwrap() {
             let mut melds: Vec<Meld> = vec![];
             let mut pair: Pair = Pair{tile: Tile::Dragon(Dragon::Red) }; // placeholder to initialize the mut
@@ -161,16 +178,17 @@ pub fn compose_hand(
                     MeldOrPair::Meld(m) => melds.push(m) } }
             melds.sort();
             let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
-            let is_open: bool =  if called_tiles.is_some() && called_tiles.clone().unwrap().iter().any( |&x| !x.is_closed() ) { true } else { false };
+            let is_open: bool =  if called_tiles.is_some() && called_tiles.as_ref().unwrap().iter().any( |&x| !x.is_closed() ) { true } else { false };
+            let yaku = yaku::find_yaku_standard(hand, winning_tile, is_open, seat_wind, round_wind, win_type)?;
             possible_hands.push(
                 Hand::Standard {
                     full_hand: hand,
                     winning_tile: winning_tile,
                     open: is_open,
-                    yaku: yaku::find_yaku_standard(
-                        hand, winning_tile, is_open, 
-                        seat_wind, round_wind, win_type)?,
-                    special_yaku: special_yaku.clone()
+                    yaku: yaku.clone(),
+                    special_yaku: special_yaku.clone(),
+                    han: scoring::count_han(&yaku, &sp_yaku, dora, !is_open)?,
+                    fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, &sp_yaku, win_type, round_wind, seat_wind)?
                 }
             )
         }
@@ -181,8 +199,7 @@ pub fn compose_hand(
         1 => return Ok(possible_hands[0].clone()),
         _ => {
             let max_han: Option<Hand> = possible_hands.iter().max_by_key(
-                |&p| (scoring::count_han(p.get_yaku(), vec![], 0, p.is_closed()).unwrap(), 
-                    scoring::count_fu(p.clone(), win_type, round_wind, seat_wind).unwrap_or_default())).cloned();
+                |&p| (p.get_han() , p.get_fu())).cloned();
             if max_han.is_some() { return Ok(max_han.unwrap().clone())
             } else { return Err(ScoringError::NoHands) }
         },
@@ -335,6 +352,8 @@ pub trait HandTools {
     fn get_yaku(&self) -> Vec<Yaku>;    // just to make my life a bit easier
     fn get_suits(&self) -> Vec<Suit>;   // and again
     fn is_closed(&self) -> bool;
+    fn get_fu(&self) -> i8;
+    fn get_han(&self) -> i8;
 }
 
 impl HandTools for Hand {
@@ -434,6 +453,10 @@ impl HandTools for Hand {
             Hand::Standard {open, ..} => !*open,
             Hand::Chiitoi {..} | Hand::Kokushi {..} => true,
     } }
+    fn get_fu(&self) -> i8 {
+        match self { Hand::Standard {fu, ..} | Hand::Chiitoi {fu, ..} | Hand::Kokushi {fu, ..} => *fu } }
+    fn get_han(&self) -> i8 {
+        match self { Hand::Standard {han, ..} | Hand::Chiitoi {han, ..} | Hand::Kokushi {han, ..} => *han } }
 }
 
 pub trait HandHelpers {
@@ -637,7 +660,7 @@ pub trait MeldHelpers {
     fn is_wind(&self) -> bool;
     fn is_pure_green(&self) -> bool;
     fn is_closed(&self) -> bool {true}
-    fn contains_tile(&self, tile: Tile) -> bool;
+    fn contains_tile(&self, tile: &Tile) -> bool;
     fn get_suit(&self) -> Option<Suit>;
     fn get_tile(&self) -> Result<Tile, ScoringError>;
     fn set_open(&self) {} // marks a meld as open
@@ -682,11 +705,11 @@ impl MeldHelpers for Meld {
     fn is_closed(&self) -> bool {
         match self { Meld::Kan {open, ..} | Meld::Triplet {open, ..} | Meld::Sequence {open, ..} => !open
     } }
-    fn contains_tile(&self, t: Tile) -> bool {
+    fn contains_tile(&self, t: &Tile) -> bool {
         match self {
-            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => t == *tile,
+            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => t == tile,
             Meld::Sequence {tiles, ..} => {
-                for tile in tiles { if t == *tile { return true } }
+                for tile in tiles { if t == tile { return true } }
                 false
     } } }
     fn get_suit(&self) -> Option<Suit> {
@@ -725,8 +748,8 @@ impl MeldHelpers for Pair {
     fn is_pure_green(&self) -> bool {
         self.tile.is_pure_green()
     }
-    fn contains_tile(&self, t: Tile) -> bool {
-        self.tile == t
+    fn contains_tile(&self, t: &Tile) -> bool {
+        &self.tile == t
     }
     fn get_suit(&self) -> Option<Suit> {
         if let Tile::Number {suit, ..} = self.tile { return Some(suit) }
@@ -740,7 +763,7 @@ impl MeldHelpers for Pair {
 pub trait SequenceHelpers {
     fn as_numbers(&self) -> [u8; 3];
     fn ittsuu_viable(&self) -> bool;
-    fn is_middle(&self, tile: Tile) -> bool;
+    fn is_middle(&self, tile: &Tile) -> bool;
 }
 
 impl SequenceHelpers for Meld {
@@ -757,11 +780,11 @@ impl SequenceHelpers for Meld {
             _ => false
         }
     }
-    fn is_middle(&self, tile: Tile) -> bool {
+    fn is_middle(&self, tile: &Tile) -> bool {
         if let Meld::Sequence {tiles, ..} = self {
             let mut a: [Tile; 3] = tiles.clone();
             a.sort();
-            a[1] == tile
+            &a[1] == tile
         } else { panic!("called is_middle() on a non-sequence meld!") }
     }
 }
@@ -824,7 +847,7 @@ mod tests {
     #[test]
     fn test_melds_from_string(){
         assert_eq!(make_melds_from_string("we,we,we,we", false), Some(vec![Meld::Kan{open: false, tile: Tile::Wind(Wind::East)}]));
-        assert_eq!(make_melds_from_string("(we,we,we,we)", false), Some(vec![Meld::Kan{open: false, tile: Tile::Wind(Wind::East)}]));
+        assert_eq!(make_melds_from_string("!we,we,we,we", false), Some(vec![Meld::Kan{open: false, tile: Tile::Wind(Wind::East)}]));
         assert_eq!(make_melds_from_string("we,we,we", true), Some(vec![Meld::Triplet{open: true, tile: Tile::Wind(Wind::East)}]));
         assert_eq!(make_melds_from_string("we,we,we|dr,dr,dr", true), Some(vec![Meld::Triplet{open: true, tile: Tile::Wind(Wind::East)},Meld::Triplet{open: true, tile: Tile::Dragon(Dragon::Red)}]));
         assert_eq!(make_melds_from_string("p5,p4,p6", true), Some(vec![Meld::Sequence{open: true, tiles: [Tile::from_string("p4").unwrap(), Tile::from_string("p5").unwrap(), Tile::from_string("p6").unwrap()]}]));
@@ -882,35 +905,35 @@ mod tests {
     #[test]
     fn test_reading_kokushi(){
         let hand: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South, None).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
 
         assert!(matches!(hand, Hand::Kokushi {..}));
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], special_yaku: None});
+                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], special_yaku: None, han: 13, fu: 20});
 
         let hand: Hand = compose_hand(crate::tiles::make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South, None).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 9, red: false },
-                                        yaku: vec![Yaku::Kokushi], special_yaku: None});  
+                                        yaku: vec![Yaku::Kokushi], special_yaku: None, han: 13, fu: 20});  
     }
 
     #[test]
     fn test_reading_chiitoi(){
         assert!(matches!(compose_hand(make_tiles_from_string("m1,m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap(), Hand::Chiitoi {..}));
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None, None).unwrap(), Hand::Chiitoi {..}));
         
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Tanyao]);
 
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Honro]);
 
         let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("dw,dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn").unwrap().try_into().unwrap(),
-                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None).unwrap();
+                                    None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None, None).unwrap();
         assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Daichiishin]);                      
     }
 
