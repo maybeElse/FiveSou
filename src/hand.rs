@@ -802,6 +802,18 @@ impl VecTileHelpers for Vec<Tile> {
     }
 }
 
+pub trait VecMeldHelpers {
+    fn count_suits(&self) -> usize;
+}
+
+impl VecMeldHelpers for Vec<Meld> {
+    fn count_suits(&self) -> usize {
+        let mut suits: Vec<Suit> = vec![];
+        for meld in self { if !suits.contains(&meld.get_suit().unwrap()) { suits.push(meld.get_suit().unwrap()) } }
+        suits.len()
+    }
+}
+
 impl fmt::Display for Meld {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -810,10 +822,15 @@ impl fmt::Display for Meld {
                 } else { write!(f, "({})", format!("{},", tile).repeat(4)) }
             },
             Meld::Triplet {tile, ..} =>  write!(f, "{}", format!("{},", tile).repeat(3)),
-            Meld::Sequence {tiles, ..} =>  write!(f, "{},{},{}", tiles[0], tiles[1], tiles[2]),
+            Meld::Sequence {tiles, ..} =>  write!(f, "{},{},{},", tiles[0], tiles[1], tiles[2]),
         }
     }
 }
+
+impl fmt::Display for Pair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{},{},", self.tile, self.tile)
+} }
 
 // TODO
 impl fmt::Display for Hand {

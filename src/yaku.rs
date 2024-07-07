@@ -1,5 +1,5 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
-use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecTileHelpers};
+use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecTileHelpers, VecMeldHelpers};
 use crate::errors::errors::{ScoringError, ParsingError};
 use core::fmt;
 
@@ -162,50 +162,6 @@ impl YakuHelpers for Vec<Yaku> {
         false
     }
 } 
-// impl YakuHelpers for Vec<YakuSpecial> {
-//     type T = YakuSpecial;
-
-//     fn from_string(special_yaku: &str) -> Result<Self, ParsingError> {
-//         let input: Vec<&str> = special_yaku.split(',').collect::<Vec<&str>>();
-//         let mut result: Vec<YakuSpecial> = vec![];
-//         for yaku in input {
-//             match yaku.to_lowercase().as_str() {
-//                 "riichi" => result.push_checked(YakuSpecial::Riichi),
-//                 "ippatsu" => result.push_checked(YakuSpecial::Ippatsu),
-//                 "doubleriichi" => result.push_checked(YakuSpecial::DoubleRiichi),
-//                 "undersea" | "underthesea" | "haiteiraoyue" | "haitei" => result.push_checked(YakuSpecial::UnderSea),
-//                 "underriver" | "undertheriver" | "houteiraoyui" | "houtei" => result.push_checked(YakuSpecial::UnderRiver),
-//                 "afterkan" | "rinshan" | "rinshankaiho" => result.push_checked(YakuSpecial::AfterKan),
-//                 "robbedkan" | "robbingakan" | "chankan" => result.push_checked(YakuSpecial::RobbedKan),
-//                 "nagashimangan" => result.push_checked(YakuSpecial::NagashiMangan),
-//                 "tenho" | "blessingofheaven" => result.push_checked(YakuSpecial::Tenho),
-//                 "chiho" | "blessingofearth" => result.push_checked(YakuSpecial::Chiho),
-//                 _ => return Err(ParsingError::BadString)
-//             }
-//         }
-//         Ok(result)
-//     }
-//     fn push_checked(&mut self, yaku: YakuSpecial) { 
-//         if self.contains_any(&YAKUMAN_SPECIAL.to_vec()) || self.contains(&YakuSpecial::NagashiMangan) {
-//             // nagashi mangan is incompatible with other yaku,
-//             // and tenho/chiho are incompatible with each other
-//         } else {
-//             match yaku {
-//                 YakuSpecial::NagashiMangan | YakuSpecial::Tenho | YakuSpecial::Chiho 
-//                   => { self.clear(); self.push(yaku) },
-//                 _ => { self.push(yaku); }
-//             }
-//         }
-//     }
-//     fn contains_any(&self, list: &Vec<YakuSpecial>) -> bool {
-//         for yaku in list {
-//             if self.contains(yaku) {
-//                 return true
-//             }
-//         }
-//         false
-//     }
-// }
 
 /////////////////////////////
 // YAKU CHECKING FUNCTIONS //
@@ -228,56 +184,44 @@ pub fn find_yaku_standard(
     fn check_ipeiko(melds: Vec<Meld>) -> bool {
         for i in 0..(&melds.len()-1) { if melds[i+1..].contains(&melds[i]) {  return true } } return false }
 
-    // TODO: refactor
     // check if the narrow requirements for a sananko are satisfied
     fn check_sananko(hand: FullHand, winning_tile: Tile, win_type: WinType) -> bool {
-        let closed_melds = hand.without_sequences().iter().fold(0, |acc, meld| { if meld.is_closed() { 1 } else { 0 } } );
-        if closed_melds == 4 { return true
-        } else if closed_melds == 3 {
-            if let WinType::Tsumo = win_type { return true
-            } else if hand.pair.tile == winning_tile { return true
-            } else {    // at this point, it's only a sananko if the winning tile was in a closed sequence
-                let seqs: Vec<Meld> = hand.only_sequences();
-                if seqs.len() == 1 {
-                    if let Meld::Sequence {..} = seqs[0] {
-                        return seqs[0].is_closed()
-                } }
-        } } return false }
+        match hand.without_sequences().iter().fold(0, |acc, meld| { if meld.is_closed() { 1 } else { 0 } } ) {
+            4 => return true,
+            3 => {
+                if let WinType::Tsumo = win_type { return true
+                } else if hand.pair.tile == winning_tile { return true
+                } else {    // at this point, it's only a sananko if the winning tile was in a closed sequence
+                    let seqs: Vec<Meld> = hand.only_sequences();
+                    if seqs.len() == 1 {
+                        if let Meld::Sequence {..} = seqs[0] {
+                            return seqs[0].is_closed() } } } },
+            _ => () }
+        return false }
 
-    // TODO: refactor
     // checks if a vec<meld> contains a valid ittsuu
     // note: the first meld's suit must be the ittsuu suit
-    fn check_ittsuu(seqs: Vec<Meld>) -> bool {
-        let mut tracker: [bool; 3] = [false, false, false];
-        for meld in &seqs { 
-            if seqs[0].get_suit() == meld.get_suit() { match meld.as_numbers()[0] { 
-                1 => tracker[0] = true,
-                4 => tracker[1] = true,
-                7 => tracker[2] = true,
-                _ => panic!()
-        } } }
-        tracker[0] && tracker[1] && tracker[2]
-    }
+    fn check_ittsuu(seqs: &Vec<Meld>) -> bool {
+        [1, 4, 7].iter().all(|&y| seqs.iter().any(|&x| x.as_numbers()[0] == y && x.get_suit() == seqs[0].get_suit()) ) }
 
     // TODO: refactor
     // checks if the hand shape matches churenpoto's 1-1-1-2-3-4-5-6-7-8-9-9-9
     fn check_churenpoto(hand: FullHand) -> bool {
         fn tiles_as_array(hand: FullHand) -> [i8; 9] {
             let mut arr: [i8; 9] = [0; 9];
-            arr[hand.pair.tile.get_number().unwrap() as usize - 1] = 2;
+            arr[(hand.pair.tile.get_number().unwrap() - 1) as usize] = 2;
             for meld in hand.melds {
                 match meld {
-                    Meld::Triplet {tile, ..} => arr[tile.get_number().unwrap() as usize - 1] += 1,
+                    Meld::Triplet {tile, ..} => arr[(tile.get_number().unwrap() - 1) as usize] += 3,
                     Meld::Sequence {tiles, ..} => {
-                        for tile in tiles {  arr[tile.get_number().unwrap() as usize - 1] += 1 } },
+                        for tile in tiles { arr[(tile.get_number().unwrap() - 1) as usize] += 1 } },
                     Meld::Kan {..} => panic!()
             } } arr }
 
         let arr: [i8; 9] = tiles_as_array(hand);
 
-        if ([3,4].contains(&arr[0]) && [3,4].contains(&arr[8])) && {
-            for i in &arr[1..8] { if ![1,2].contains(i) { return false } } return true
-        } { true } else { false } }
+        if [0,8].iter().all(|x| [3,4].contains(&arr[*x])) &&
+            arr[1..7].iter().all(|x| [1,2].contains(x)) { true } else { false } }
 
     let mut yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
 
@@ -329,29 +273,16 @@ pub fn find_yaku_standard(
     let mut ittsuu_seqs = hand_seqs.clone();
     ittsuu_seqs.retain(|x| x.ittsuu_viable()); ittsuu_seqs.sort();
     if ittsuu_seqs.len() >= 3 { // ittsuu is possible
-        // ittsuu_seqs's melds are sorted at this point, so if there are only 3 sequences ...
-        if ittsuu_seqs.len() == 3 && ittsuu_seqs[0].get_suit() == ittsuu_seqs[1].get_suit() &&  ittsuu_seqs[1].get_suit() == ittsuu_seqs[2].get_suit() 
-        && ittsuu_seqs[0].as_numbers().contains(&1) && ittsuu_seqs[1].as_numbers().contains(&4) && ittsuu_seqs[2].as_numbers().contains(&7) {
+        // ittsuu_seqs's melds are sorted at this point, so there are three cases to handle:
+        // - there are three sequence and they're an ittsuu,
+        // - there are four sequences and the first one is the start of the ittsuu,
+        // - there are four sequences and the second one is the start of the ittsuu.
+        // check_ittsuu() assumes that the first sequence it's given is the start of the ittsuu,
+        // so we can test the last case by slicing the first sequence out of the vec.
+        // TODO: test cases for this in particular.
+        if (ittsuu_seqs.len() == 3 && check_ittsuu(&ittsuu_seqs)) || check_ittsuu(&ittsuu_seqs) || check_ittsuu(&ittsuu_seqs[1..].to_vec()) {
             yaku.push_checked(Yaku::Ittsuu)
-        } else {
-            match { // TODO: this should be a trait on Vec<Meld>
-                let mut suits: Vec<Suit> = vec![];
-                for meld in &ittsuu_seqs{ if !suits.contains(&meld.get_suit().unwrap()) { suits.push(meld.get_suit().unwrap()) } }
-                suits.len()
-            } {
-                1 => {
-                    if check_ittsuu(ittsuu_seqs) { yaku.push_checked(Yaku::Ittsuu) }
-                },
-                2 => match ittsuu_seqs[1..].iter().fold(0, |acc, meld| { if meld.get_suit() == ittsuu_seqs[0].get_suit() { 1 } else { 0 } }) 
-                {
-                    1 => if check_ittsuu(ittsuu_seqs[1..].to_vec()) { yaku.push_checked(Yaku::Ittsuu) },
-                    3 => if check_ittsuu(ittsuu_seqs) { yaku.push_checked(Yaku::Ittsuu) },
-                    _ => ()
-                },
-                _ => ()
-            }
-        }
-    }
+    } }
     if hand_seqs.len() >= 2 && !open { // ipeiko and ryanpeiko are possible
         // the hand's melds should be sorted at this point, so ...
         if hand.melds[0] == hand.melds[1] && hand.melds[2] == hand.melds[3] { yaku.push_checked(Yaku::Ryanpeiko)
@@ -549,5 +480,22 @@ mod tests {
         hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Yakuhai(2)]);
         assert_eq!(hand.get_fu(), 50);
+    }
+
+    #[test]
+    fn test_churenpoto() {
+        use crate::tiles::FromString;
+
+        let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p3,p4,p5,p6,p7,p8,p9,p9,p9,p9").unwrap(),
+            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+        assert_eq!(hand.get_yaku(), vec![Yaku::ChurenPoto]);
+
+        let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p2,p3,p4,p5,p6,p7,p8,p9,p9,p9").unwrap(),
+            None, Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+        assert_eq!(hand.get_yaku(), vec![Yaku::ChurenPoto, Yaku::SpecialWait]);
+
+        let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p3,p4,p5,p5,p5,p7,p8,p9,p9,p9").unwrap(),
+            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+        assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Chinitsu]);
     }
 }
