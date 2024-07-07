@@ -1,6 +1,6 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string};
 use crate::errors::errors::{ScoringError, ParsingError, CompositionError};
-use crate::yaku::{Yaku, YakuSpecial, WinType};
+use crate::yaku::{Yaku, WinType, YakuHelpers};
 use crate::yaku;
 use crate::scoring;
 use core::fmt;
@@ -17,7 +17,6 @@ pub enum Hand {
         winning_tile: Tile,
         open: bool,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>,
         han: i8,
         fu: i8
     },
@@ -25,7 +24,6 @@ pub enum Hand {
         full_hand: [Pair; 7],
         winning_tile: Tile,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>,
         han: i8,
         fu: i8
     },
@@ -33,7 +31,6 @@ pub enum Hand {
         full_hand: [Tile; 14],
         winning_tile: Tile,
         yaku: Vec<Yaku>,
-        special_yaku: Option<Vec<YakuSpecial>>,
         han: i8,
         fu: i8
     },
@@ -117,7 +114,7 @@ pub fn compose_hand(
     closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
     // stuff we need for yaku testing
     winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
-    special_yaku: Option<Vec<YakuSpecial>>, dora_markers: Option<Vec<Tile>>
+    special_yaku: Option<Vec<Yaku>>, dora_markers: Option<Vec<Tile>>
 ) -> Result<Hand, ScoringError> {
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
@@ -132,12 +129,14 @@ pub fn compose_hand(
         // thirteen orphans
         let kokushi: Option<Vec<Yaku>> = compose_kokushi(closed_tiles.clone(), winning_tile);
         if kokushi.is_some() {
-            // a thirteen orphan hand can't be anything else, so we'll just return it
+            // a thirteen orphan hand can't be anything else (except special yakuman),
+            // so we'll just return it after seeing if the Vec<Yaku> accepts any of the special yaku.
+            let mut kokushi = kokushi.unwrap();
+            kokushi.append_checked(&special_yaku.clone().unwrap_or_default());
             return Ok(Hand::Kokushi{
                 full_hand: closed_tiles.try_into().unwrap(),
                 winning_tile: winning_tile,
-                yaku: kokushi.unwrap(),
-                special_yaku: special_yaku.clone(),
+                yaku: kokushi,
                 han: 13,
                 fu: 20
             })
@@ -145,14 +144,13 @@ pub fn compose_hand(
         // seven pairs
         let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
         if chiitoi.is_some() {
-            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, win_type)?;
+            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
             possible_hands.push(
                 Hand::Chiitoi{
                     full_hand: chiitoi.unwrap().try_into().unwrap(),
                     winning_tile: winning_tile, 
                     yaku: yaku.clone(),
-                    special_yaku: special_yaku.clone(),
-                    han: scoring::count_han(&yaku, &special_yaku.clone().unwrap_or_default(), dora, true)?,
+                    han: scoring::count_han(&yaku, dora, true)?,
                     fu: 25
                 }
             );
@@ -164,7 +162,7 @@ pub fn compose_hand(
     let standard_partials: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(closed_tiles, true, (4 - called_tiles.clone().unwrap_or_default().len()) as i8, false);
 
     if standard_partials.is_some() {
-        let sp_yaku: Vec<YakuSpecial> = special_yaku.clone().unwrap_or_default();
+        let sp_yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
 
         for partial in standard_partials.unwrap() {
             let mut melds: Vec<Meld> = vec![];
@@ -179,16 +177,15 @@ pub fn compose_hand(
             melds.sort();
             let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
             let is_open: bool =  if called_tiles.is_some() && called_tiles.as_ref().unwrap().iter().any( |&x| !x.is_closed() ) { true } else { false };
-            let yaku = yaku::find_yaku_standard(hand, winning_tile, is_open, seat_wind, round_wind, win_type)?;
+            let yaku = yaku::find_yaku_standard(hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type)?;
             possible_hands.push(
                 Hand::Standard {
                     full_hand: hand,
                     winning_tile: winning_tile,
                     open: is_open,
                     yaku: yaku.clone(),
-                    special_yaku: special_yaku.clone(),
-                    han: scoring::count_han(&yaku, &sp_yaku, dora, !is_open)?,
-                    fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, &sp_yaku, win_type, round_wind, seat_wind)?
+                    han: scoring::count_han(&yaku, dora, !is_open)?,
+                    fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, win_type, round_wind, seat_wind)?
                 }
             )
         }
@@ -910,13 +907,13 @@ mod tests {
         assert!(matches!(hand, Hand::Kokushi {..}));
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], special_yaku: None, han: 13, fu: 20});
+                                        yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], han: 13, fu: 20});
 
         let hand: Hand = compose_hand(crate::tiles::make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(),
                                     None, Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
                                         winning_tile: Tile::Number{ suit: Suit::Man, number: 9, red: false },
-                                        yaku: vec![Yaku::Kokushi], special_yaku: None, han: 13, fu: 20});  
+                                        yaku: vec![Yaku::Kokushi], han: 13, fu: 20});  
     }
 
     #[test]

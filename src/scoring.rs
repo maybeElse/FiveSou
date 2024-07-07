@@ -1,5 +1,5 @@
 use crate::errors::errors::{ScoringError, ParsingError, ValueError};
-use crate::yaku::{Yaku, YakuSpecial, WinType, YAKUMAN};
+use crate::yaku::{Yaku, WinType, YAKUMAN};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, MeldOrPair, SequenceHelpers};
 
@@ -14,65 +14,61 @@ pub enum Payment{
 }
 
 pub fn count_han(
-    yaku_normal: &Vec<Yaku>,
-    yaku_special: &Vec<YakuSpecial>,
+    yaku_vec: &Vec<Yaku>,
     dora: i8,
     closed: bool,
 ) -> Result<i8, ScoringError>{
     let mut han_count: i8 = dora;
+    let mut has_yakuman: bool = false;
 
-    for yaku in yaku_special {
-        match yaku {
-            YakuSpecial::Riichi | YakuSpecial::Ippatsu | YakuSpecial::UnderSea 
-            | YakuSpecial::UnderRiver | YakuSpecial::AfterKan | YakuSpecial::RobbedKan
-            => han_count += 1,
-            YakuSpecial::DoubleRiichi => han_count += 2,
-            YakuSpecial::Tenho | YakuSpecial::Chiho => han_count = 13,
-            _ => return Err(ScoringError::WrongPipeline) // nagashi mangan
-        }
-    }
+    for yaku in yaku_vec {
+        // safety rails for han counting around yakuman
+        if !has_yakuman || YAKUMAN.contains(yaku) {
+            match yaku {
+                // special criteria
+                Yaku::Chiitoi => han_count += 2,
 
-    for yaku in yaku_normal {
-        match yaku {
-            // special criteria
-            Yaku::Chiitoi => han_count += 2,
+                // based on luck
+                Yaku::ClosedTsumo => han_count += 1,
 
-            // based on luck
-            Yaku::ClosedTsumo => han_count += 1,
+                // based on sequences
+                Yaku::Pinfu => han_count += if closed { 1 } else { 0 },
+                Yaku::Ipeiko => han_count += 1,
+                Yaku::Sanshoku | Yaku::Ittsuu => han_count += if closed { 2 } else { 1 },
+                Yaku::Ryanpeiko => han_count += 3,
 
-            // based on sequences
-            Yaku::Pinfu => han_count += if closed { 1 } else { 0 },
-            Yaku::Ipeiko => han_count += 1,
-            Yaku::Sanshoku | Yaku::Ittsuu => han_count += if closed { 2 } else { 1 },
-            Yaku::Ryanpeiko => han_count += 3,
+                // based on triplets/quads
+                Yaku::Toitoi | Yaku::Sananko | Yaku::SanshokuDouko | Yaku::Sankantsu
+                    => han_count += 2,
 
-            // based on triplets/quads
-            Yaku::Toitoi | Yaku::Sananko | Yaku::SanshokuDouko | Yaku::Sankantsu
-                => han_count += 2,
+                // based on terminal/honor
+                Yaku::Tanyao => han_count += 1,
+                Yaku::Yakuhai(count) => han_count += count,
+                Yaku::Chanta => han_count += if closed { 2 } else { 1 },
+                Yaku::Junchan => han_count += if closed { 3 } else { 2 },
+                Yaku::Honro | Yaku::Shosangen => han_count += 2,
 
-            // based on terminal/honor
-            Yaku::Tanyao => han_count += 1,
-            Yaku::Yakuhai(count) => han_count += count,
-            Yaku::Chanta => han_count += if closed { 2 } else { 1 },
-            Yaku::Junchan => han_count += if closed { 3 } else { 2 },
-            Yaku::Honro | Yaku::Shosangen => han_count += 2,
+                // based on suits
+                Yaku::Honitsu => han_count += if closed { 3 } else { 2 },
+                Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
 
-            // based on suits
-            Yaku::Honitsu => han_count += if closed { 3 } else { 2 },
-            Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
+                // special yaku
+                Yaku::Riichi | Yaku::Ippatsu | Yaku::UnderRiver | Yaku::UnderSea | Yaku::AfterKan | Yaku::RobbedKan => han_count += 1,
+                Yaku::DoubleRiichi => han_count += 2,
+                Yaku::NagashiMangan => return Err(ScoringError::WrongPipeline),
 
-            // yakuman hands
-            Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => han_count += 26 - (han_count % 13), // double yakuman
-            _ if YAKUMAN.contains(&yaku) => han_count += 13 - (han_count % 13), // try to filter out any non-yakuman han
-            _ => panic!(),
-        }
-    }
-
+                // yakuman hands
+                Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => { // double yakuman
+                    if has_yakuman { han_count += 26; } else { has_yakuman = true; han_count = 26 } }
+                _ if YAKUMAN.contains(&yaku) => { // yakuman
+                    if has_yakuman { han_count += 13; } else { has_yakuman = true; han_count = 13 } }
+                _ => panic!(),
+    } } }
     Ok(han_count)
 }
 
 pub fn count_fu(
-    full_hand: &FullHand, winning_tile: &Tile, open: bool, yaku: &Vec<Yaku>, special_yaku: &Vec<YakuSpecial>,
+    full_hand: &FullHand, winning_tile: &Tile, open: bool, yaku: &Vec<Yaku>,
     win_type: WinType, round_wind: Wind, seat_wind: Wind
 ) -> Result<i8, ScoringError> {
     let mut fu: i8 = 20;                                // 20 fu for winning
@@ -81,8 +77,8 @@ pub fn count_fu(
         fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
             else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
             else { 0 }
-    } else if !yaku.contains(&Yaku::Pinfu) && !special_yaku.contains(&YakuSpecial::AfterKan) 
-            { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan
+    } else if !yaku.contains(&Yaku::Pinfu) && !yaku.contains(&Yaku::AfterKan) 
+            { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan (TODO: Ruleset)
     if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
     else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
         else if w == round_wind || w == seat_wind { 2 } else { 0 } }
@@ -171,20 +167,16 @@ mod tests {
     #[test]
     fn han_counts(){
         assert_eq!(count_han(
-            &vec![Yaku::Chiitoi],
-            &vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chiitoi, Yaku::Riichi],
             0, true).unwrap(), 3);
         assert_eq!(count_han(
-            &vec![Yaku::Chinroto],
-            &vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chinroto, Yaku::Riichi],
             0, true).unwrap(), 13);
         assert_eq!(count_han(
-            &vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen],
-            &vec![YakuSpecial::Riichi],
+            &vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen, Yaku::Riichi],
             0, true).unwrap(), 26);
         assert_eq!(count_han(
-            &vec![Yaku::Daisushi],
-            &vec![YakuSpecial::Riichi],
+            &vec![Yaku::Daisushi, Yaku::Riichi],
             0, true).unwrap(), 26);
     }
 

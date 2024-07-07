@@ -10,12 +10,16 @@ mod hand;
 
 use crate::tiles::{Tile, Wind, FromString, FromChar};
 use crate::hand::{Meld, Hand, HandTools};
-use crate::yaku::{YakuSpecial, WinType, YakuHelpers, Yaku};
+use crate::yaku::{WinType, YakuHelpers, Yaku};
 use crate::scoring::{Payment};
 use crate::errors::errors::{ScoringError};
+use std::io;
 
 fn main() {
-    println!("Hello, world!");
+    println!("\
+\t+----------------------------------------+
+\t| Hello [generic riichi mahjong player]! |
+\t+----------------------------------------+");
 }
 
 fn score_hand_from_str( // note: this depends on specificly formatted input, so it may be a bit fragile
@@ -31,6 +35,9 @@ fn score_hand_from_str( // note: this depends on specificly formatted input, so 
     special_yaku: &str,     // comma-separated special yaku names, ie "riichi,ippatsu"
     repeat_counts: usize,   // number of repeat counters on the table
 ) -> Result<Payment, ScoringError> {
+    let dora: Vec<Tile> = tiles::make_tiles_from_string(dora_markers).unwrap_or_default();
+    let sp_yaku: Vec<Yaku> = Vec::<Yaku>::from_string(special_yaku).unwrap_or_default();
+
     score_hand_from_structs(
         tiles::make_tiles_from_string(&[closed_tiles, winning_tile].join(",")).unwrap(),
         hand::make_melds_from_string(called_tiles, true),
@@ -41,8 +48,8 @@ fn score_hand_from_str( // note: this depends on specificly formatted input, so 
             'r' => WinType::Ron,
             't' => WinType::Tsumo,
             _ => panic!() }},
-        tiles::make_tiles_from_string(dora_markers).unwrap_or_default(),
-        Vec::<YakuSpecial>::from_string(special_yaku).unwrap_or_default(),
+        if dora.len() > 0 { Some(dora) } else { None },
+        if sp_yaku.len() > 0 { Some(sp_yaku) } else { None },
         repeat_counts as i8
     )
 }
@@ -54,24 +61,39 @@ fn score_hand_from_structs(
     seat_wind: Wind,
     round_wind: Wind,
     win_type: WinType,
-    dora_markers: Vec<Tile>,
-    special_yaku: Vec<YakuSpecial>,
+    dora_markers: Option<Vec<Tile>>,
+    special_yaku: Option<Vec<Yaku>>,
     repeats: i8
 ) -> Result<Payment, ScoringError> {
     let hand: Hand = hand::compose_hand(
-        closed_tiles, called_tiles, winning_tile, win_type, seat_wind, round_wind, if special_yaku.is_empty() { None } else { Some(special_yaku.clone()) }
+        closed_tiles, called_tiles, winning_tile, win_type, seat_wind, round_wind, 
+        special_yaku.clone(), dora_markers
     )?;
-    if special_yaku.contains(&YakuSpecial::NagashiMangan) {
+    if special_yaku.unwrap_or_default().contains(&Yaku::NagashiMangan) {
         scoring::calc_player_split(2000, seat_wind == Wind::East, WinType::Tsumo, repeats)
     } else {
         scoring::calc_player_split(
             scoring::calc_base_points(
-                scoring::count_han(hand.get_yaku(), special_yaku, /*hand.count_dora(dora_markers) */ 0, hand.is_closed())?,
-                scoring::count_fu(hand, win_type, round_wind, seat_wind)?
+                hand.get_han(),
+                hand.get_fu()
             )?, seat_wind == Wind::East, win_type, repeats
         )
     }
 }
+
+// fn human_readable_scoring(
+//     closed_tiles: Vec<Tile>,
+//     called_tiles: Option<Vec<Meld>>,
+//     winning_tile: Tile,
+//     seat_wind: Wind,
+//     round_wind: Wind,
+//     win_type: WinType,
+//     dora_markers: Vec<Tile>,
+//     special_yaku: Vec<YakuSpecial>,
+//     repeats: i8
+// ) -> String {
+
+// }
 
 #[cfg(test)]
 mod tests {
@@ -116,28 +138,28 @@ mod tests {
         assert_eq!(score_hand_from_str("p2,p3,p4,p5,p6,p7,p7,p7,we,we", "ws,ws,ws", "p1", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(3900)));
 
         // #6
-        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|(s7,s7,s7,s7)", "p2", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(800)));
-        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|(s7,s7,s7,s7)", "p2", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(2000)));
-        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|(s7,s7,s7,s7)", "p2", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 800, non_dealer: 400}));
-        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|(s7,s7,s7,s7)", "p2", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(1300)));
+        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|!s7,s7,s7,s7", "p2", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(800)));
+        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|!s7,s7,s7,s7", "p2", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(2000)));
+        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|!s7,s7,s7,s7", "p2", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 800, non_dealer: 400}));
+        assert_eq!(score_hand_from_str("p3,p3,p4,p4,p5,p5,p2", "s8,s8,s8|!s7,s7,s7,s7", "p2", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(1300)));
 
         // #7
-        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "(wn,wn,wn,wn)", "m3", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(2000)));
-        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "(wn,wn,wn,wn)", "m3", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(3400)));
-        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "(wn,wn,wn,wn)", "m3", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 2300, non_dealer: 1200}));
-        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "(wn,wn,wn,wn)", "m3", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(2300)));
+        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "!wn,wn,wn,wn", "m3", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(2000)));
+        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "!wn,wn,wn,wn", "m3", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(3400)));
+        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "!wn,wn,wn,wn", "m3", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 2300, non_dealer: 1200}));
+        assert_eq!(score_hand_from_str("m2,m2,m4,m4,m3,s7,s7,s7,ws,ws", "!wn,wn,wn,wn", "m3", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(2300)));
 
         // #8
-        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|(dr,dr,dr,dr)", "s3", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(1300)));
-        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|(dr,dr,dr,dr)", "s3", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(3400)));
-        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|(dr,dr,dr,dr)", "s3", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 1200, non_dealer: 600}));
-        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|(dr,dr,dr,dr)", "s3", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(2300)));
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(1300)));
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(3400)));
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 1200, non_dealer: 600}));
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(2300)));
 
         // #9
-        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "(ws,ws,ws,ws)|(dg,dg,dg,dg)", "p9", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(2900)));
-        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "(ws,ws,ws,ws)|(dg,dg,dg,dg)", "p9", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(4800)));
-        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "(ws,ws,ws,ws)|(dg,dg,dg,dg)", "p9", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 4000, non_dealer: 2000}));
-        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "(ws,ws,ws,ws)|(dg,dg,dg,dg)", "p9", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(6400)));
+        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "!ws,ws,ws,ws|!dg,dg,dg,dg", "p9", 'e', 'e', 't', "", "", 0), Ok(Payment::DealerTsumo(2900)));
+        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "!ws,ws,ws,ws|!dg,dg,dg,dg", "p9", 'e', 'e', 'r', "", "", 0), Ok(Payment::Ron(4800)));
+        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "!ws,ws,ws,ws|!dg,dg,dg,dg", "p9", 's', 'e', 't', "", "", 0), Ok(Payment::Tsumo{dealer: 4000, non_dealer: 2000}));
+        assert_eq!(score_hand_from_str("m7,m8,m9,p7,p8,p8,p8", "!ws,ws,ws,ws|!dg,dg,dg,dg", "p9", 's', 'e', 'r', "", "", 0), Ok(Payment::Ron(6400)));
 
         // #10
         assert_eq!(score_hand_from_str("m2,m3,m4,m4,m5,m6,m7,s8,s8,s8", "we,we,we,we", "m1", 'e', 'e', 't', "", "rinshan", 0), Ok(Payment::DealerTsumo(2600)));

@@ -65,14 +65,8 @@ pub enum Yaku {
                     //     thirteen orphans, thirteen-way wait
                     //     nine gates, nine-way wait
                     // I think that breaking this out into a unique criteria will simplify code somewhat
-}
 
-pub static YAKUMAN: [Yaku; 13] = [Yaku::Kokushi, Yaku::Suuankou, Yaku::SuuankouTanki, Yaku::Daisangen, Yaku::Shosushi, Yaku::Daisushi, Yaku::Tsuiso, 
-                                Yaku::Chinroto, Yaku::Ryuiso, Yaku::ChurenPoto, Yaku::Sukantsu, Yaku::Daichiishin, Yaku::SpecialWait];
-pub static YAKUMAN_SPECIAL: [YakuSpecial; 2] = [YakuSpecial::Tenho, YakuSpecial::Chiho];
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum YakuSpecial {
+    // special yaku
     Riichi,         // declared Riichi, fully closed hand       1 han closed
     DoubleRiichi,   // declared Riichi on first turn            2 han closed
     Ippatsu,        // win within one go-around after Riichi    1 han closed
@@ -87,6 +81,12 @@ pub enum YakuSpecial {
     Chiho,          // blessing of earth. tsumo.                limit   closed, non-dealer only
 }
 
+pub static YAKUMAN: [Yaku; 15] = [Yaku::Kokushi, Yaku::Suuankou, Yaku::SuuankouTanki, Yaku::Daisangen, Yaku::Shosushi,
+                                Yaku::Daisushi, Yaku::Tsuiso, Yaku::Chinroto, Yaku::Ryuiso, Yaku::ChurenPoto, Yaku::Sukantsu,
+                                Yaku::Daichiishin, Yaku::SpecialWait, Yaku::Tenho, Yaku::Chiho];
+pub static YAKU_SPECIAL: [Yaku; 10] = [Yaku::Riichi, Yaku::DoubleRiichi, Yaku::Ippatsu, Yaku::UnderSea, Yaku::UnderRiver,
+                                Yaku::AfterKan, Yaku::RobbedKan, Yaku::NagashiMangan, Yaku::Tenho, Yaku::Chiho];
+
 // some yaku are mutually exclusive; for instance, Ipeiko cannot coexist with Ryanpeiko
 // hopefully my yaku-identification logic will handle this, but just in case ...
 // see https://riichi.wiki/Yaku_compatibility
@@ -95,10 +95,32 @@ pub trait YakuHelpers {
 
     fn from_string(special: &str) -> Result<Self, ParsingError> where Self: Sized { Err(ParsingError::Unimplemented) }
     fn push_checked(&mut self, yaku: Self::T);
+    fn append_checked(&mut self, yaku: &Vec<Self::T>);
     fn contains_any(&self, yaku: &Self) -> bool;
 }
 impl YakuHelpers for Vec<Yaku> {
     type T = Yaku;
+
+    fn from_string(special_yaku: &str) -> Result<Self, ParsingError> {
+        let input: Vec<&str> = special_yaku.split(',').collect::<Vec<&str>>();
+        let mut result: Vec<Yaku> = vec![];
+        for yaku in input {
+            match yaku.to_lowercase().as_str() {
+                "riichi" => result.push_checked(Yaku::Riichi),
+                "ippatsu" => result.push_checked(Yaku::Ippatsu),
+                "doubleriichi" => result.push_checked(Yaku::DoubleRiichi),
+                "undersea" | "underthesea" | "haiteiraoyue" | "haitei" => result.push_checked(Yaku::UnderSea),
+                "underriver" | "undertheriver" | "houteiraoyui" | "houtei" => result.push_checked(Yaku::UnderRiver),
+                "afterkan" | "rinshan" | "rinshankaiho" => result.push_checked(Yaku::AfterKan),
+                "robbedkan" | "robbingakan" | "chankan" => result.push_checked(Yaku::RobbedKan),
+                "nagashimangan" => result.push_checked(Yaku::NagashiMangan),
+                "tenho" | "blessingofheaven" => result.push_checked(Yaku::Tenho),
+                "chiho" | "blessingofearth" => result.push_checked(Yaku::Chiho),
+                _ => return Err(ParsingError::BadString)
+            }
+        }
+        Ok(result)
+    }
 
     fn push_checked(&mut self, yaku: Yaku) {
         if self.contains_any(&YAKUMAN.to_vec()) && !YAKUMAN.contains(&yaku) {
@@ -113,12 +135,21 @@ impl YakuHelpers for Vec<Yaku> {
                     }
                     self.push(yaku);
                 },
+                // nagashi mangan is incompatible with all other yaku
+                Yaku::NagashiMangan => { self.clear(); self.push(yaku) },
+                // and yakuman are incompatible with non-yakuman
                 _ if YAKUMAN.contains(&yaku) => {
                     self.retain(|x| YAKUMAN.contains(x));
                     self.push(yaku)
                 }
                 _ => { self.push(yaku); }
             }
+        }
+    }
+
+    fn append_checked(&mut self, other: &Vec<Self::T>) {
+        for yaku in other {
+            self.push_checked(*yaku);
         }
     }
 
@@ -131,50 +162,50 @@ impl YakuHelpers for Vec<Yaku> {
         false
     }
 } 
-impl YakuHelpers for Vec<YakuSpecial> {
-    type T = YakuSpecial;
+// impl YakuHelpers for Vec<YakuSpecial> {
+//     type T = YakuSpecial;
 
-    fn from_string(special_yaku: &str) -> Result<Self, ParsingError> {
-        let input: Vec<&str> = special_yaku.split(',').collect::<Vec<&str>>();
-        let mut result: Vec<YakuSpecial> = vec![];
-        for yaku in input {
-            match yaku.to_lowercase().as_str() {
-                "riichi" => result.push_checked(YakuSpecial::Riichi),
-                "ippatsu" => result.push_checked(YakuSpecial::Ippatsu),
-                "doubleriichi" => result.push_checked(YakuSpecial::DoubleRiichi),
-                "undersea" | "underthesea" | "haiteiraoyue" | "haitei" => result.push_checked(YakuSpecial::UnderSea),
-                "underriver" | "undertheriver" | "houteiraoyui" | "houtei" => result.push_checked(YakuSpecial::UnderRiver),
-                "afterkan" | "rinshan" | "rinshankaiho" => result.push_checked(YakuSpecial::AfterKan),
-                "robbedkan" | "robbingakan" | "chankan" => result.push_checked(YakuSpecial::RobbedKan),
-                "nagashimangan" => result.push_checked(YakuSpecial::NagashiMangan),
-                "tenho" | "blessingofheaven" => result.push_checked(YakuSpecial::Tenho),
-                "chiho" | "blessingofearth" => result.push_checked(YakuSpecial::Chiho),
-                _ => return Err(ParsingError::BadString)
-            }
-        }
-        Ok(result)
-    }
-    fn push_checked(&mut self, yaku: YakuSpecial) { 
-        if self.contains_any(&YAKUMAN_SPECIAL.to_vec()) || self.contains(&YakuSpecial::NagashiMangan) {
-            // nagashi mangan is incompatible with other yaku,
-            // and tenho/chiho are incompatible with each other
-        } else {
-            match yaku {
-                YakuSpecial::NagashiMangan | YakuSpecial::Tenho | YakuSpecial::Chiho 
-                  => { self.clear(); self.push(yaku) },
-                _ => { self.push(yaku); }
-            }
-        }
-    }
-    fn contains_any(&self, list: &Vec<YakuSpecial>) -> bool {
-        for yaku in list {
-            if self.contains(yaku) {
-                return true
-            }
-        }
-        false
-    }
-}
+//     fn from_string(special_yaku: &str) -> Result<Self, ParsingError> {
+//         let input: Vec<&str> = special_yaku.split(',').collect::<Vec<&str>>();
+//         let mut result: Vec<YakuSpecial> = vec![];
+//         for yaku in input {
+//             match yaku.to_lowercase().as_str() {
+//                 "riichi" => result.push_checked(YakuSpecial::Riichi),
+//                 "ippatsu" => result.push_checked(YakuSpecial::Ippatsu),
+//                 "doubleriichi" => result.push_checked(YakuSpecial::DoubleRiichi),
+//                 "undersea" | "underthesea" | "haiteiraoyue" | "haitei" => result.push_checked(YakuSpecial::UnderSea),
+//                 "underriver" | "undertheriver" | "houteiraoyui" | "houtei" => result.push_checked(YakuSpecial::UnderRiver),
+//                 "afterkan" | "rinshan" | "rinshankaiho" => result.push_checked(YakuSpecial::AfterKan),
+//                 "robbedkan" | "robbingakan" | "chankan" => result.push_checked(YakuSpecial::RobbedKan),
+//                 "nagashimangan" => result.push_checked(YakuSpecial::NagashiMangan),
+//                 "tenho" | "blessingofheaven" => result.push_checked(YakuSpecial::Tenho),
+//                 "chiho" | "blessingofearth" => result.push_checked(YakuSpecial::Chiho),
+//                 _ => return Err(ParsingError::BadString)
+//             }
+//         }
+//         Ok(result)
+//     }
+//     fn push_checked(&mut self, yaku: YakuSpecial) { 
+//         if self.contains_any(&YAKUMAN_SPECIAL.to_vec()) || self.contains(&YakuSpecial::NagashiMangan) {
+//             // nagashi mangan is incompatible with other yaku,
+//             // and tenho/chiho are incompatible with each other
+//         } else {
+//             match yaku {
+//                 YakuSpecial::NagashiMangan | YakuSpecial::Tenho | YakuSpecial::Chiho 
+//                   => { self.clear(); self.push(yaku) },
+//                 _ => { self.push(yaku); }
+//             }
+//         }
+//     }
+//     fn contains_any(&self, list: &Vec<YakuSpecial>) -> bool {
+//         for yaku in list {
+//             if self.contains(yaku) {
+//                 return true
+//             }
+//         }
+//         false
+//     }
+// }
 
 /////////////////////////////
 // YAKU CHECKING FUNCTIONS //
@@ -183,6 +214,7 @@ impl YakuHelpers for Vec<YakuSpecial> {
 pub fn find_yaku_standard(
     hand: FullHand,
     winning_tile: Tile,
+    special_yaku: &Option<Vec<Yaku>>,
     open: bool,
     seat_wind: Wind,
     round_wind: Wind,
@@ -247,7 +279,7 @@ pub fn find_yaku_standard(
             for i in &arr[1..8] { if ![1,2].contains(i) { return false } } return true
         } { true } else { false } }
 
-    let mut yaku: Vec<Yaku> = vec![];
+    let mut yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
 
     if let WinType::Tsumo = win_type { if !open { yaku.push_checked(Yaku::ClosedTsumo) } }
 
@@ -394,9 +426,10 @@ pub fn find_yaku_standard(
 // chiitoi is only eligible for a few yaku:
 // tanyao, honro, honitsu, chinitsu, and daichiishin
 pub fn find_yaku_chiitoi(
-    hand: [Pair; 7], winning_tile: Tile, win_type: WinType,
+    hand: [Pair; 7], winning_tile: Tile, special_yaku: &Option<Vec<Yaku>>, win_type: WinType,
 ) -> Result<Vec<Yaku>, ScoringError> {
-    let mut yaku: Vec<Yaku> = vec![Yaku::Chiitoi];
+    let mut yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
+    yaku.push_checked(Yaku::Chiitoi);
     if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }
     if !hand.has_any_honor() {
         yaku.push_checked(Yaku::Tanyao);
@@ -423,23 +456,20 @@ mod tests {
 
     #[test]
     fn yaku_from_strings(){
-        let mut yaku: Vec<YakuSpecial> = Vec::from_string("riichi").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::Riichi]);
+        let mut yaku: Vec<Yaku> = Vec::from_string("riichi").unwrap();
+        assert_eq!(yaku, vec![Yaku::Riichi]);
         
         yaku = Vec::from_string("riichi,ippatsu").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::Riichi, YakuSpecial::Ippatsu]);
+        assert_eq!(yaku, vec![Yaku::Riichi, Yaku::Ippatsu]);
         
         yaku = Vec::from_string("riichi,ippatsu,nagashimangan").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::NagashiMangan]);
+        assert_eq!(yaku, vec![Yaku::NagashiMangan]);
         
         yaku = Vec::from_string("chiho,robbedkan").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::Chiho]);
+        assert_eq!(yaku, vec![Yaku::Chiho]);
         
         yaku = Vec::from_string("robbedkan,chiho").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::Chiho]);
-        
-        yaku = Vec::from_string("chiho,tenho").unwrap();
-        assert_eq!(yaku, vec![YakuSpecial::Chiho]);
+        assert_eq!(yaku, vec![Yaku::Chiho]);
     }
 
     #[test]
