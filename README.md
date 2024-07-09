@@ -1,6 +1,6 @@
 # FiveSou: A Riichi Mahjong Hand Scorer
 
-Given a completed hand and various relevant information, this determines how the hand is scored and what payment split should be applied.
+Given a completed hand and various relevant information, determine how the hand is scored and what payment split should be applied.
 
 ## Usage
 
@@ -10,7 +10,7 @@ If run as a stand-alone program it will guide the user through entering necessar
 
 ## Current Features
 
-- Scores hands according to the [Japanese Professional Mahjong League's 2023 A-rules](https://cloudymahjong.com/wp-content/uploads/2023/12/JPML-A-rules-2023.pdf), with three exceptions: kan/uradora are counted if the markers are provided, ippatsu is considered valid if specified, and kazoe yakuman is scored as a yakuman.
+- Scores hands according to the [Japanese Professional Mahjong League's 2022 A-rules](https://cloudymahjong.com/wp-content/uploads/2023/12/JPML-A-rules-2023.pdf), with three exceptions: kan/uradora are counted if the markers are provided, ippatsu is considered valid if specified, and kazoe yakuman is scored as a yakuman.
 
 ## Planned Features
 
