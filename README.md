@@ -1,4 +1,4 @@
-# Riichi Mahjong Hand Scorer
+# FiveSou: A Riichi Mahjong Hand Scorer
 
 Given a completed hand and various relevant information, this determines how the hand is scored and what payment split should be applied.
 
