@@ -7,6 +7,7 @@ mod yaku;
 mod errors;
 mod scoring;
 mod hand;
+mod rulesets;
 
 use crate::tiles::{Tile, Wind, FromString, FromChar};
 use crate::hand::{Meld, Hand, HandTools};
