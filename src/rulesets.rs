@@ -1,5 +1,8 @@
 /*
 While all riichi mahjong variants operate on the same basic principles, the variations between them influence how specific cases are scored. The list here is not exhaustive, and I hope to expand it.
+
+TODO: are there any other commonly used rulesets?
+TODO: option for custom ruleset loaded from JSON; wrap local yaku support into that.
 */
 
 #[derive(Debug, Clone, Copy)]
@@ -11,12 +14,6 @@ pub enum RiichiRuleset {
     MajSoul,
 }
 
-pub enum AllGreen {
-    Mandatory,
-    Allowed,
-    Forbidden
-}
-
 pub trait RuleVariations {
     fn has_kiriage_mangan(&self) -> bool {true}
     fn has_yakuman_stacking(&self) -> bool {true}
@@ -26,7 +23,8 @@ pub trait RuleVariations {
     fn rinshan_fu(&self) -> bool {false}
     fn repeat_payment_ron(&self, counters: i8) -> i32 {counters as i32 * 300}
     fn repeat_payment_tsumo(&self, counters: i8) -> i32 {counters as i32 * 100}
-    fn hatsu_in_all_green(&self) -> AllGreen {AllGreen::Allowed}
+    fn allows_all_green_hatsu(&self) -> bool {true}
+    fn requires_all_green_hatsu(&self) -> bool {false}
     fn allows_ippatsu(&self) -> bool {false}
     fn allows_nagashi_mangan(&self) -> bool {true}
     fn counts_akadora(&self) -> bool {true}
@@ -45,8 +43,9 @@ impl RuleVariations for RiichiRuleset {
         RiichiRuleset::MajSoul | RiichiRuleset::JPML2022 => 4, _ => 2, } } // TODO: verify EMA rules
     fn rinshan_fu(&self) -> bool { match self {
         RiichiRuleset::JPML2022 => false, _ => true, } } // TODO: verify MajSoul rules
-    fn hatsu_in_all_green(&self) -> AllGreen { match self {
-        RiichiRuleset::JPML2022 => AllGreen::Mandatory, _ => AllGreen::Allowed, } }
+    fn allows_all_green_hatsu(&self) -> bool { true }
+    fn requires_all_green_hatsu(&self) -> bool { match self {
+        RiichiRuleset::JPML2022 => true, _ => false, } }
     fn allows_ippatsu(&self) -> bool { match self {
         RiichiRuleset::JPML2022 | RiichiRuleset::JPML2023 => false, _ => true, } }
     fn allows_nagashi_mangan(&self) -> bool { match self {
