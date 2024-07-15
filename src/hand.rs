@@ -569,9 +569,9 @@ impl HandHelpers for FullHand {
         false
     }
     fn has_any_simple(&self) -> bool {
-        if !self.pair.has_honor() && !self.pair.has_terminal() { return true }
+        if self.pair.has_simple() { return true }
         for meld in &self.melds {
-            if !meld.has_honor() && !meld.has_terminal() { return true } }
+            if meld.has_simple() { return true } }
         false
     }
     fn only_sequences(&self) -> Vec<Meld> {
@@ -691,6 +691,7 @@ impl PartialEq for Meld {
 pub trait MeldHelpers {
     fn has_honor(&self) -> bool;
     fn has_terminal(&self) -> bool;
+    fn has_simple(&self) -> bool;
     fn is_dragon(&self) -> bool;
     fn is_wind(&self) -> bool;
     fn is_pure_green(&self) -> bool;
@@ -717,6 +718,11 @@ impl MeldHelpers for Meld {
                 false
             },
             Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => { tile.is_terminal() },
+    } }
+    fn has_simple(&self) -> bool {
+        match self {
+            Meld::Sequence {tiles, ..} => { return true },
+            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => { !tile.is_terminal() && !tile.is_honor() },
     } }
     fn is_dragon(&self) -> bool {
         match self {
@@ -773,6 +779,9 @@ impl MeldHelpers for Pair {
     }
     fn has_terminal(&self) -> bool {
         self.tile.is_terminal()
+    }
+    fn has_simple(&self) -> bool {
+        !self.tile.is_terminal() && !self.tile.is_dragon()
     }
     fn is_dragon(&self) -> bool {
         if let Tile::Dragon(_) = self.tile { true } else { false }

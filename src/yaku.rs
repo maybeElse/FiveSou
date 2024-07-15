@@ -177,6 +177,7 @@ pub fn find_yaku_standard(
 
     // sanshoku checking for 3 or 4 sequences
     fn check_sanshoku(seqs: &Vec<Meld>) -> bool {
+        if seqs.len() < 3 { return false }
         let mut seqs_trim = seqs.clone();
         if seqs[0].as_numbers() == seqs[1].as_numbers() {
             seqs_trim.retain(|x| x.as_numbers() == seqs[0].as_numbers());
@@ -242,9 +243,9 @@ pub fn find_yaku_standard(
         // first, check for chanta (each meld/pair has a terminal or honor)
         // if that's the case, check for junchan (hand has no honors)
         let mut end_or_honor_in_all: bool = true;
-        if hand.pair.has_honor() || hand.pair.has_terminal() {
+        if !hand.pair.has_simple() {
             for meld in hand.melds {
-                if !meld.has_terminal() || !meld.has_honor() {
+                if !meld.has_terminal() && !meld.has_honor() {
                     end_or_honor_in_all = false } }
         } else { end_or_honor_in_all = false }
 
@@ -477,14 +478,20 @@ mod tests {
         assert_eq!(hand.get_fu(), 40);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p2,p3,p3,p4,p4,p5,p5,p2").unwrap(),
-        hand::make_melds_from_string("s8,s8,s8|!s7,s7,s7,s7", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
+            hand::make_melds_from_string("s8,s8,s8|!s7,s7,s7,s7", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao]);
         assert_eq!(hand.get_fu(), 50);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m1,m2,m3,m4,m4,m5,m6,m7,s8,s8,s8").unwrap(),
-        hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
+            hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Yakuhai(2)]);
         assert_eq!(hand.get_fu(), 50);
+
+
+        let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m7,m8,m9,m9,m9,s9,s9,s9").unwrap(),
+            hand::make_melds_from_string("ws,ws,ws,ws|s9,s9,s9", true), Tile::from_string("m8").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::JPML2023).unwrap();
+        assert_eq!(hand.get_yaku(), vec![Yaku::Chanta]);
+        assert_eq!(hand.get_fu(), 60);
     }
 
     #[test]
