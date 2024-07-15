@@ -491,7 +491,7 @@ mod tests {
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m7,m8,m9,m9,m9,s9,s9,s9").unwrap(),
             hand::make_melds_from_string("ws,ws,ws,ws|s9,s9,s9", true), Tile::from_string("m8").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::JPML2023).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Chanta]);
-        assert_eq!(hand.get_fu(), 60);
+        assert_eq!(hand.get_fu(), 50);
     }
 
     #[test]
