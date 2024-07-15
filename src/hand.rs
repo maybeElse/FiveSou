@@ -496,7 +496,7 @@ pub trait HandHelpers {
     fn as_tiles(&self) -> Vec<Tile>;        // pulls tiles out of melds/pairs into an array
     fn only_closed(&self) -> Vec<MeldOrPair> {panic!()} // only the closed part of the hand
     fn only_open(&self) -> Vec<Meld> {panic!()}         // ... or only the open part
-    fn is_pure_green(&self) -> bool {false} // check for ryuisou eligibility
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {false} // check for ryuisou eligibility
 } 
 
 impl HandHelpers for FullHand {
@@ -619,12 +619,13 @@ impl HandHelpers for FullHand {
         } }
         vec
     }
-    fn is_pure_green(&self) -> bool {
-        if !self.pair.is_pure_green() { return false }
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
+        if !self.pair.is_pure_green(ruleset) { return false }
         for meld in self.melds {
-            if !meld.is_pure_green() { return false }
-        }
-        return true
+            if !meld.is_pure_green(ruleset) { return false } }
+        if ruleset.requires_all_green_hatsu() { // an uncommon rule.
+            self.has_any_honor()                // but it's easy to check for!
+        } else { true }
     }
 }
 
@@ -694,7 +695,7 @@ pub trait MeldHelpers {
     fn has_simple(&self) -> bool;
     fn is_dragon(&self) -> bool;
     fn is_wind(&self) -> bool;
-    fn is_pure_green(&self) -> bool;
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool;
     fn is_closed(&self) -> bool {true}
     fn contains_tile(&self, tile: &Tile) -> bool;
     fn get_suit(&self) -> Option<Suit>;
@@ -736,11 +737,11 @@ impl MeldHelpers for Meld {
                 if let Tile::Wind(_) = tile { true } else { false } }
             _ => false
     } }
-    fn is_pure_green(&self) -> bool {
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
         match self {
-            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => tile.is_pure_green(),
+            Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => tile.is_pure_green(ruleset),
             Meld::Sequence {tiles, ..} => {
-                for tile in tiles { if !tile.is_pure_green() { return false } }
+                for tile in tiles { if !tile.is_pure_green(ruleset) { return false } }
                 true
     } } }
     fn is_closed(&self) -> bool {
@@ -789,8 +790,8 @@ impl MeldHelpers for Pair {
     fn is_wind(&self) -> bool {
         if let Tile::Wind(_) = self.tile { true } else { false }
     }
-    fn is_pure_green(&self) -> bool {
-        self.tile.is_pure_green()
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
+        self.tile.is_pure_green(ruleset)
     }
     fn contains_tile(&self, t: &Tile) -> bool {
         &self.tile == t

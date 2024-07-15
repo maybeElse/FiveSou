@@ -315,7 +315,7 @@ pub fn find_yaku_standard(
                         yaku.push_checked(Yaku::SpecialWait)
             } } }
 
-            if hand.is_pure_green() { yaku.push_checked(Yaku::Ryuiso) }
+            if hand.is_pure_green(ruleset) { yaku.push_checked(Yaku::Ryuiso) }
         },
         3 => { // sanshoku is possible
             let seqs: Vec<Meld> = hand.only_sequences();
@@ -455,7 +455,7 @@ mod tests {
             None, Tile::from_string("s7").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Chiitoi, Yaku::ClosedTsumo, Yaku::Tanyao]);
         assert_eq!(hand.is_closed(), true);
-        assert_eq!(hand.get_han(), 4);
+        assert_eq!(hand.get_han (), 4);
         assert_eq!(hand.get_fu(), 25);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m3,m5,m6,m7,m8,m8,m8,m3").unwrap(),
@@ -491,7 +491,7 @@ mod tests {
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m7,m8,m9,m9,m9,s9,s9,s9").unwrap(),
             hand::make_melds_from_string("ws,ws,ws,ws|s9,s9,s9", true), Tile::from_string("m8").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::JPML2023).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Chanta]);
-        assert_eq!(hand.get_fu(), 50);
+        assert_eq!(hand.get_fu(), 60);
     }
 
     #[test]

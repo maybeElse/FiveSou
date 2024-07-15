@@ -1,4 +1,5 @@
 use crate::errors::errors::{ScoringError, ParsingError};
+use crate::rulesets::{RiichiRuleset, RuleVariations};
 use core::fmt;
 
 ///////////////////////
@@ -53,7 +54,7 @@ pub trait TileHelpers {
     fn is_honor(&self) -> bool;
     fn is_wind(&self) -> bool;
     fn is_dragon(&self) -> bool;
-    fn is_pure_green(&self) -> bool;
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool;
     fn adjacent_all(&self) -> Vec<[Tile; 2]>;
     fn adjacent_up(&self) -> Option<[Tile; 2]>;
     fn adjacent_down(&self) -> Option<[Tile; 2]>;
@@ -142,11 +143,11 @@ impl TileHelpers for Tile {
     fn is_dragon(&self) -> bool {
         if let Tile::Dragon {..} = self { true } else { false }
     }
-    fn is_pure_green(&self) -> bool {
+    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
         match self {
-            Tile::Dragon(dragon) => if let Dragon::Green = dragon { true } else { false },
-            Tile::Wind(_) => false,
-            Tile::Number {suit, number, ..} => if let Suit::Sou = suit { [2,3,4,6,8].contains(number) } else { false }
+            Tile::Dragon(dragon) if ruleset.allows_all_green_hatsu() => if let Dragon::Green = dragon { true } else { false },
+            Tile::Number {suit, number, ..} => if let Suit::Sou = suit { [2,3,4,6,8].contains(number) } else { false },
+            _ => false,
         }
     }
     fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
