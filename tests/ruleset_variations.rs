@@ -115,10 +115,10 @@ fn jpml_pro_test2023(){
     assert_eq!(fivesou::score_hand_from_str("m5,m5,m5,s3,s3,s3,s5,s6,s7,s8", "!p2,p2,p2,p2", "s4", 's', 'e', 'r', "", "", 0, ruleset), Ok(Payment::Ron(2000)));
 
     // #5
-    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|s1,s1,s1,s1", "m4", 'e', 'e', 't', "", "", 0, ruleset), Ok(Payment::DealerTsumo(1200)));
-    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|s1,s1,s1,s1", "m4", 'e', 'e', 'r', "", "", 0, ruleset), Ok(Payment::Ron(2900)));
-    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|s1,s1,s1,s1", "m4", 's', 'e', 't', "", "", 0, ruleset), Ok(Payment::Tsumo{dealer: 2300, non_dealer: 1200}));
-    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|s1,s1,s1,s1", "m4", 's', 'e', 'r', "", "", 0, ruleset), Ok(Payment::Ron(3900)));
+    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|!s1,s1,s1,s1", "m4", 'e', 'e', 't', "", "", 0, ruleset), Ok(Payment::DealerTsumo(1200)));
+    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|!s1,s1,s1,s1", "m4", 'e', 'e', 'r', "", "", 0, ruleset), Ok(Payment::Ron(2900)));
+    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|!s1,s1,s1,s1", "m4", 's', 'e', 't', "", "", 0, ruleset), Ok(Payment::Tsumo{dealer: 2300, non_dealer: 1200}));
+    assert_eq!(fivesou::score_hand_from_str("m2,m3,p5,p5", "ws,ws,ws|dg,dg,dg|!s1,s1,s1,s1", "m4", 's', 'e', 'r', "", "", 0, ruleset), Ok(Payment::Ron(3900)));
 
     // #6
     assert_eq!(fivesou::score_hand_from_str("p5,p7,p7,p8,p9,we,we", "!m1,m1,m1,m1|!dr,dr,dr,dr", "p6", 'e', 'e', 't', "", "", 0, ruleset), Ok(Payment::DealerTsumo(2900)));
