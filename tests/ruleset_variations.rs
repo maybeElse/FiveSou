@@ -73,7 +73,7 @@ fn jpml_pro_test_2022(){
 }
 
 #[test]
-fn jpml_pro_test2023(){
+fn jpml_pro_test_2023(){
     // test cases sourced from the 2023 JPML pro test:
     // https://cloudymahjong.com/wp-content/uploads/2024/06/JPML-Pro-Test-2023-40th-Season-Questions.pdf
     // https://cloudymahjong.com/wp-content/uploads/2024/06/JPML-Pro-Test-2023-40th-Season-Answers.pdf
