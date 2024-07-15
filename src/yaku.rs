@@ -172,15 +172,21 @@ pub fn find_yaku_standard(
     ruleset: RiichiRuleset
 ) -> Result<Vec<Yaku>, ScoringError> {
     // given four values, returns true if three of them are equal
-    fn three_in_common(a: &[u8], b: &[u8], c: &[u8], d: &[u8]) -> bool {
+    fn three_in_common<T: std::cmp::PartialEq>(a: T, b: T, c: T, d: T) -> bool {
         (a == b || c == d ) && (a == c || b == d) }
 
-    fn check_sanshoku(seq: &Vec<Meld>) -> bool {
-        false
+    // sanshoku checking for 3 or 4 sequences
+    fn check_sanshoku(seqs: &Vec<Meld>) -> bool {
+        let mut seqs_trim = seqs.clone();
+        if seqs[0].as_numbers() == seqs[1].as_numbers() {
+            seqs_trim.retain(|x| x.as_numbers() == seqs[0].as_numbers());
+        } else {
+            seqs_trim.retain(|x| x.as_numbers() == seqs[1].as_numbers()); }
+        if seqs_trim.count_suits() == 3 { true } else { false }
     }
 
     // returns true if any two of the melds in the array are equal
-    fn check_ipeiko(melds: Vec<Meld>) -> bool {
+    fn check_ipeiko(melds: &Vec<Meld>) -> bool {
         for i in 0..melds.len() { if melds[i+1..].contains(&melds[i]) { return true } } return false }
 
     // check if the narrow requirements for a sananko are satisfied
@@ -285,7 +291,7 @@ pub fn find_yaku_standard(
     if hand_seqs.len() >= 2 && !open { // ipeiko and ryanpeiko are possible
         // the hand's melds should be sorted at this point, so ...
         if hand.melds[0] == hand.melds[1] && hand.melds[2] == hand.melds[3] { yaku.push_checked(Yaku::Ryanpeiko)
-        } else if check_ipeiko(hand_seqs) { yaku.push_checked(Yaku::Ipeiko) } }
+        } else if check_ipeiko(&hand_seqs) { yaku.push_checked(Yaku::Ipeiko) } }
 
     match hand.count_kans() { // kan-based yaku
         3 => yaku.push_checked(Yaku::Sankantsu),
@@ -308,11 +314,8 @@ pub fn find_yaku_standard(
         },
         3 => { // sanshoku is possible
             let seqs: Vec<Meld> = hand.only_sequences();
-            if seqs.len() == 3 { // the case that's easy to check
-                if seqs[0].as_numbers() == seqs[1].as_numbers() && seqs[0].as_numbers() == seqs[2].as_numbers() {
-                    yaku.push_checked(Yaku::Sanshoku) }
-            } else if seqs.len() == 4 && check_sanshoku(&seqs) {
-                    yaku.push_checked(Yaku::Sanshoku)
+            if seqs.len() >= 3 && check_sanshoku(&seqs) {
+                yaku.push_checked(Yaku::Sanshoku)
             } else if seqs.len() <= 1 { // Sanshoku Douku might be possible
                 let trips: Vec<Meld> = hand.without_sequences();
                 if trips.len() == 3 {
@@ -434,7 +437,7 @@ mod tests {
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s3,s4,p2,p2,p2,p8,p8").unwrap(),
             None, Tile::from_string("m4").unwrap(), WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao, Yaku::Ipeiko, Yaku::Sanshoku]);
+        assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao, Yaku::Ipeiko]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p2,p3,p4,p4,p4,p5,p6,p7,p8,s2,s3,s4,p9").unwrap(),
             None, Tile::from_string("p9").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();

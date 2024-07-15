@@ -851,6 +851,14 @@ impl VecMeldHelpers for Vec<Meld> {
     }
 }
 
+impl VecMeldHelpers for [Meld] {
+    fn count_suits(&self) -> usize {
+        let mut suits: Vec<Suit> = vec![];
+        for meld in self { if !suits.contains(&meld.get_suit().unwrap()) { suits.push(meld.get_suit().unwrap()) } }
+        suits.len()
+    }
+}
+
 impl fmt::Display for Meld {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
