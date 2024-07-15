@@ -1,6 +1,5 @@
 use crate::errors::errors::{ScoringError, ParsingError};
 use core::fmt;
-    
 
 ///////////////////////
 // structs and enums //
@@ -44,9 +43,10 @@ pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, ScoringError> {
 // traits //
 ////////////
 
-pub trait FromString {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
-pub trait FromChar {fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized;}
-pub trait AsTiles {fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized;}
+
+pub trait MakeTile {
+    fn from_char(char: char) -> Result<Self, ScoringError> where Self: Sized {panic!()}
+    fn from_string(str: &str) -> Result<Self, ScoringError> where Self: Sized {panic!()} }
 pub trait TileHelpers {
     fn is_numbered(&self) -> bool;
     fn is_terminal(&self) -> bool;
@@ -60,10 +60,9 @@ pub trait TileHelpers {
     fn adjacent_around(&self) -> Option<[Tile; 2]>;
     fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
     fn get_number(&self) -> Result<u8, ScoringError>;
-    fn dora(self: &Self) -> Tile;
-}
+    fn dora(self: &Self) -> Tile; }
 
-impl FromString for Tile {
+impl MakeTile for Tile {
     fn from_string(str: &str) -> Result<Self, ScoringError> {
         let v: Vec<char> = str.chars().collect();
         match v.len() {
@@ -95,7 +94,7 @@ impl FromString for Tile {
         }
 } }
 
-impl FromChar for Dragon {
+impl MakeTile for Dragon {
     fn from_char(char: char) -> Result<Self, ScoringError> {
         match char {
             'r' => Ok(Dragon::Red),
@@ -106,7 +105,7 @@ impl FromChar for Dragon {
     }
 }
 
-impl FromChar for Wind {
+impl MakeTile for Wind {
     fn from_char(char: char) -> Result<Self, ScoringError> {
         match char {
             'e' => Ok(Wind::East),
@@ -116,7 +115,7 @@ impl FromChar for Wind {
             _ => Err(ScoringError::ParseError(ParsingError::BadChar)),
 } } }
 
-impl FromChar for Suit {
+impl MakeTile for Suit {
     fn from_char(char: char) -> Result<Self, ScoringError> {
         match char {
             'p' => Ok(Suit::Pin),

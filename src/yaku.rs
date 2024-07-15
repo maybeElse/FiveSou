@@ -1,6 +1,7 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecTileHelpers, VecMeldHelpers};
 use crate::errors::errors::{ScoringError, ParsingError};
+use crate::rulesets::{RiichiRuleset, RuleVariations};
 use core::fmt;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -132,9 +133,11 @@ impl YakuHelpers for Vec<Yaku> {
                 Yaku::Ryanpeiko => {
                     if self.contains(&Yaku::Ipeiko) {
                         self.retain(|x| *x != Yaku::Ipeiko);
-                    }
-                    self.push(yaku);
-                },
+                    } self.push(yaku); },
+                Yaku::DoubleRiichi => {
+                    if self.contains(&Yaku::Riichi) {
+                        self.retain(|x| *x != Yaku::Riichi);
+                    } self.push(yaku); },
                 // nagashi mangan is incompatible with all other yaku
                 Yaku::NagashiMangan => { self.clear(); self.push(yaku) },
                 // and yakuman are incompatible with non-yakuman
@@ -148,19 +151,10 @@ impl YakuHelpers for Vec<Yaku> {
     }
 
     fn append_checked(&mut self, other: &Vec<Self::T>) {
-        for yaku in other {
-            self.push_checked(*yaku);
-        }
-    }
+        for yaku in other { self.push_checked(*yaku); } }
 
     fn contains_any(&self, list: &Vec<Yaku>) -> bool {
-        for yaku in list {
-            if self.contains(yaku) {
-                return true
-            }
-        }
-        false
-    }
+        list.iter().any(|y| self.contains(y)) }
 } 
 
 /////////////////////////////
@@ -174,19 +168,24 @@ pub fn find_yaku_standard(
     open: bool,
     seat_wind: Wind,
     round_wind: Wind,
-    win_type: WinType
+    win_type: WinType,
+    ruleset: RiichiRuleset
 ) -> Result<Vec<Yaku>, ScoringError> {
     // given four values, returns true if three of them are equal
     fn three_in_common(a: &[u8], b: &[u8], c: &[u8], d: &[u8]) -> bool {
         (a == b || c == d ) && (a == c || b == d) }
 
+    fn check_sanshoku(seq: &Vec<Meld>) -> bool {
+        false
+    }
+
     // returns true if any two of the melds in the array are equal
     fn check_ipeiko(melds: Vec<Meld>) -> bool {
-        for i in 0..(&melds.len()-1) { if melds[i+1..].contains(&melds[i]) {  return true } } return false }
+        for i in 0..melds.len() { if melds[i+1..].contains(&melds[i]) { return true } } return false }
 
     // check if the narrow requirements for a sananko are satisfied
     fn check_sananko(hand: FullHand, winning_tile: Tile, win_type: WinType) -> bool {
-        match hand.without_sequences().iter().fold(0, |acc, meld| { if meld.is_closed() { 1 } else { 0 } } ) {
+        match hand.without_sequences().iter().fold(0, |acc, meld| { if meld.is_closed() { acc + 1 } else { acc } } ) {
             4 => return true,
             3 => {
                 if let WinType::Tsumo = win_type { return true
@@ -195,7 +194,7 @@ pub fn find_yaku_standard(
                     let seqs: Vec<Meld> = hand.only_sequences();
                     if seqs.len() == 1 {
                         if let Meld::Sequence {..} = seqs[0] {
-                            return seqs[0].is_closed() } } } },
+                            return seqs[0].contains_tile(&winning_tile) && seqs[0].is_closed() } } } },
             _ => () }
         return false }
 
@@ -312,8 +311,7 @@ pub fn find_yaku_standard(
             if seqs.len() == 3 { // the case that's easy to check
                 if seqs[0].as_numbers() == seqs[1].as_numbers() && seqs[0].as_numbers() == seqs[2].as_numbers() {
                     yaku.push_checked(Yaku::Sanshoku) }
-            } else if seqs.len() == 4 && three_in_common(
-                &seqs[0].as_numbers(), &seqs[1].as_numbers(), &seqs[2].as_numbers(), &seqs[3].as_numbers()) {
+            } else if seqs.len() == 4 && check_sanshoku(&seqs) {
                     yaku.push_checked(Yaku::Sanshoku)
             } else if seqs.len() <= 1 { // Sanshoku Douku might be possible
                 let trips: Vec<Meld> = hand.without_sequences();
@@ -424,78 +422,78 @@ mod tests {
 
     #[test]
     fn basic_yaku_tests(){
-        use crate::tiles::FromString;
+        use crate::tiles::MakeTile;
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m3,m4,p5,p6,p7,p4,p5,p6,s3,s4,s5,m7,m7").unwrap(),
-            None, Tile::from_string("m4").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::from_string("m4").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Tanyao, Yaku::Pinfu]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s3,s4,p2,p3,p4,p9,p9").unwrap(),
-            None, Tile::Number{ suit: Suit::Man, number: 4, red: false }, WinType::Ron, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::Number{ suit: Suit::Man, number: 4, red: false }, WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Pinfu, Yaku::Ipeiko, Yaku::Sanshoku]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s3,s4,p2,p2,p2,p8,p8").unwrap(),
-            None, Tile::from_string("m4").unwrap(), WinType::Ron, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::from_string("m4").unwrap(), WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao, Yaku::Ipeiko, Yaku::Sanshoku]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p2,p3,p4,p4,p4,p5,p6,p7,p8,s2,s3,s4,p9").unwrap(),
-            None, Tile::from_string("p9").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
+            None, Tile::from_string("p9").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Pinfu, Yaku::Ittsuu]);
         assert_eq!(hand.is_closed(), true);
         assert_eq!(hand.get_han(), 4);
         assert_eq!(hand.get_fu(), 20);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m2,m2,m3,m3,p3,p3,p5,p5,s6,s6,s7,s7,s8,s8").unwrap(),
-            None, Tile::from_string("s7").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
+            None, Tile::from_string("s7").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Chiitoi, Yaku::ClosedTsumo, Yaku::Tanyao]);
         assert_eq!(hand.is_closed(), true);
         assert_eq!(hand.get_han(), 4);
         assert_eq!(hand.get_fu(), 25);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m3,m5,m6,m7,m8,m8,m8,m3").unwrap(),
-            hand::make_melds_from_string("p8,p8,p8|m2,m2,m2", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
+            hand::make_melds_from_string("p8,p8,p8|m2,m2,m2", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao]);
         assert_eq!(hand.is_closed(), false);
         assert_eq!(hand.get_han(), 1);
         assert_eq!(hand.get_fu(), 40);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p2,p2,p2,we,we").unwrap(),
-            hand::make_melds_from_string("m8,m8,m8|p3,p3,p3|s8,s8,s8", true), Tile::from_string("p2").unwrap(), WinType::Ron, Wind::South, Wind::East, None, None).unwrap();
+            hand::make_melds_from_string("m8,m8,m8|p3,p3,p3|s8,s8,s8", true), Tile::from_string("p2").unwrap(), WinType::Ron, Wind::South, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Toitoi]);
         assert_eq!(hand.get_han(), 2);
         assert_eq!(hand.get_fu(), 30);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p2,p3,p4,p5,p6,p7,p7,p7,we,we").unwrap(),
-            hand::make_melds_from_string("ws,ws,ws", true), Tile::from_string("p1").unwrap(), WinType::Tsumo, Wind::South, Wind::East, None, None).unwrap();
+            hand::make_melds_from_string("ws,ws,ws", true), Tile::from_string("p1").unwrap(), WinType::Tsumo, Wind::South, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Honitsu, Yaku::Yakuhai(1)]);
         assert_eq!(hand.get_han(), 3);
         assert_eq!(hand.get_fu(), 40);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p2,p3,p3,p4,p4,p5,p5,p2").unwrap(),
-        hand::make_melds_from_string("s8,s8,s8|!s7,s7,s7,s7", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
+        hand::make_melds_from_string("s8,s8,s8|!s7,s7,s7,s7", true), Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Tanyao]);
         assert_eq!(hand.get_fu(), 50);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("m1,m2,m3,m4,m4,m5,m6,m7,s8,s8,s8").unwrap(),
-        hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None).unwrap();
+        hand::make_melds_from_string("we,we,we,we", true), Tile::from_string("m3").unwrap(), WinType::Tsumo, Wind::East, Wind::East, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::Yakuhai(2)]);
         assert_eq!(hand.get_fu(), 50);
     }
 
     #[test]
     fn test_churenpoto() {
-        use crate::tiles::FromString;
+        use crate::tiles::MakeTile;
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p3,p4,p5,p6,p7,p8,p9,p9,p9,p9").unwrap(),
-            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ChurenPoto]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p2,p3,p4,p5,p6,p7,p8,p9,p9,p9").unwrap(),
-            None, Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::from_string("p2").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ChurenPoto, Yaku::SpecialWait]);
 
         let hand: Hand = hand::compose_hand(tiles::make_tiles_from_string("p1,p1,p1,p2,p3,p4,p5,p5,p5,p7,p8,p9,p9,p9").unwrap(),
-            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None).unwrap();
+            None, Tile::from_string("p3").unwrap(), WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
         assert_eq!(hand.get_yaku(), vec![Yaku::ClosedTsumo, Yaku::Chinitsu]);
     }
 }

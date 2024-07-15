@@ -1,7 +1,8 @@
 use crate::errors::errors::{ScoringError, ParsingError, ValueError};
-use crate::yaku::{Yaku, WinType, YAKUMAN};
+use crate::yaku::{Yaku, WinType, YAKUMAN, YakuHelpers};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, MeldOrPair, SequenceHelpers};
+use crate::rulesets::{RiichiRuleset, RuleVariations};
 
 #[derive(Debug, PartialEq)]
 pub enum Payment{
@@ -17,7 +18,8 @@ pub fn count_han(
     yaku_vec: &Vec<Yaku>,
     dora: i8,
     closed: bool,
-) -> Result<i8, ScoringError>{
+    ruleset: RiichiRuleset
+) -> i8 {
     let mut han_count: i8 = dora;
     let mut has_yakuman: bool = false;
 
@@ -53,23 +55,25 @@ pub fn count_han(
                 Yaku::Chinitsu => han_count +=  if closed { 6 } else { 5 },
 
                 // special yaku
-                Yaku::Riichi | Yaku::Ippatsu | Yaku::UnderRiver | Yaku::UnderSea | Yaku::AfterKan | Yaku::RobbedKan => han_count += 1,
-                Yaku::DoubleRiichi => han_count += 2,
-                Yaku::NagashiMangan => return Err(ScoringError::WrongPipeline),
+                Yaku::Riichi | Yaku::UnderRiver | Yaku::UnderSea | Yaku::AfterKan | Yaku::RobbedKan => han_count += 1,
+                Yaku::Ippatsu => han_count += if ruleset.allows_ippatsu() { 1 } else { 0 },
+                Yaku::DoubleRiichi => han_count += if ruleset.allows_double_riichi() { 2 } else { 0 },
+                Yaku::NagashiMangan => (), // this should only happen if nagashi mangan isn't a valid yaku in the active ruleset.
 
                 // yakuman hands
-                Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki => { // double yakuman
+                Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki if ruleset.has_double_yakuman() => { // double yakuman
                     if has_yakuman { han_count += 26; } else { has_yakuman = true; han_count = 26 } }
                 _ if YAKUMAN.contains(&yaku) => { // yakuman
-                    if has_yakuman { han_count += 13; } else { has_yakuman = true; han_count = 13 } }
+                    if has_yakuman && ruleset.has_yakuman_stacking() { han_count += 13;
+                    } else { has_yakuman = true; han_count = 13 } }
                 _ => panic!(),
     } } }
-    Ok(han_count)
+    han_count
 }
 
 pub fn count_fu(
     full_hand: &FullHand, winning_tile: &Tile, open: bool, yaku: &Vec<Yaku>,
-    win_type: WinType, round_wind: Wind, seat_wind: Wind
+    win_type: WinType, round_wind: Wind, seat_wind: Wind, ruleset: RiichiRuleset
 ) -> Result<i8, ScoringError> {
     let mut fu: i8 = 20;                                // 20 fu for winning
 
@@ -77,10 +81,11 @@ pub fn count_fu(
         fu += if !open { 10 }                           // 10 fu for a ron with a closed hand
             else if yaku.contains(&Yaku::Pinfu) { return Ok(30) } // 30 fu total for open pinfu
             else { 0 }
-    } else if !yaku.contains(&Yaku::Pinfu) && !yaku.contains(&Yaku::AfterKan) 
-            { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu or after a kan (TODO: Ruleset)
-    if full_hand.pair.is_dragon() { fu += 2 }           // 2 fu if the pair is a dragon or the round/seat wind
-    else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { 4 } 
+    } else if !yaku.contains(&Yaku::Pinfu) && (!yaku.contains(&Yaku::AfterKan) || ruleset.is_rinshan_tsumo())
+            { fu += 2 }                                 // 2 fu for tsumo, but not if it's pinfu; check ruleset for after a kan
+
+    if full_hand.pair.is_dragon() { fu += 2             // 2 fu if the pair is a dragon or the round/seat wind
+    } else if let Tile::Wind(w) = full_hand.pair.tile { fu += if w == round_wind && w == seat_wind { ruleset.double_wind_fu()} 
         else if w == round_wind || w == seat_wind { 2 } else { 0 } }
 
     for meld in full_hand.melds {
@@ -116,7 +121,7 @@ pub fn count_fu(
     Ok( round_tens(fu) ) // round up to nearest 10
 }
 
-pub fn calc_base_points( han: i8, fu: i8 ) -> Result<i32, ScoringError> {
+pub fn calc_base_points( han: i8, fu: i8, yaku: &Vec<Yaku>, ruleset: RiichiRuleset ) -> Result<i32, ScoringError> {
     if han < 0 || fu < 20 {
         return Err(ScoringError::ValueError(ValueError::BadInput))
     } else {
@@ -124,16 +129,18 @@ pub fn calc_base_points( han: i8, fu: i8 ) -> Result<i32, ScoringError> {
             0 => return Err(ScoringError::NoYaku),
             1 ..= 4 => {
                 let bp: i32 = (fu as i32) * (2_i32.pow(2 + (han as u32)));
-                if bp > 2000 { Ok(2000) } 
-                else { Ok(bp) } },
+                if bp > 2000 { Ok(2000)
+                } else if bp == 1920 && ruleset.has_kiriage_mangan(){ Ok(2000)
+                } else { Ok(bp) } },
             5 => Ok(2000),          // Mangan
             6 | 7 => Ok(3000),      // Haneman
             8 | 9 | 10 => Ok(4000), // Baiman
             11 | 12 => Ok(6000),    // Sanbaiman
-            _ => Ok(8000 * (han as i32 / 13))   // Yakuman and Kazoe Yakuman
-        }
-    }
-}
+            _ if han > 12 => {      // Yakuman and Kazoe Yakuman
+                if yaku.contains_any(&YAKUMAN.to_vec()) { Ok(8000 * (han as i32 / 13))
+                } else { Ok(ruleset.kazoe_yakuman_score()) }},
+            _ => panic!("negative han???"),
+} } }
 
 pub fn calc_player_split(
     base: i32,
@@ -166,42 +173,35 @@ mod tests {
 
     #[test]
     fn han_counts(){
-        assert_eq!(count_han(
-            &vec![Yaku::Chiitoi, Yaku::Riichi],
-            0, true).unwrap(), 3);
-        assert_eq!(count_han(
-            &vec![Yaku::Chinroto, Yaku::Riichi],
-            0, true).unwrap(), 13);
-        assert_eq!(count_han(
-            &vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen, Yaku::Riichi],
-            0, true).unwrap(), 26);
-        assert_eq!(count_han(
-            &vec![Yaku::Daisushi, Yaku::Riichi],
-            0, true).unwrap(), 26);
+        assert_eq!(count_han(&vec![Yaku::Chiitoi, Yaku::Riichi], 0, true, RiichiRuleset::MajSoul), 3);
+        assert_eq!(count_han(&vec![Yaku::Chinroto, Yaku::Riichi], 0, true, RiichiRuleset::MajSoul), 13);
+        assert_eq!(count_han(&vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen, Yaku::Riichi], 0, true, RiichiRuleset::MajSoul), 26);
+        assert_eq!(count_han(&vec![Yaku::Daisushi, Yaku::Riichi], 0, true, RiichiRuleset::MajSoul), 26);
     }
 
     #[test]
     fn base_point_calc(){
-        assert_eq!(calc_base_points(1, 50).unwrap(), 400);
-        assert_eq!(calc_base_points(2, 40).unwrap(), 640);
-        assert_eq!(calc_base_points(3, 70).unwrap(), 2000);
-        assert_eq!(calc_base_points(4, 40).unwrap(), 2000);
-        assert_eq!(calc_base_points(7, 30).unwrap(), 3000);
-        assert_eq!(calc_base_points(9, 50).unwrap(), 4000);
-        assert_eq!(calc_base_points(11, 40).unwrap(), 6000);
-        assert_eq!(calc_base_points(13, 50).unwrap(), 8000);
+        assert_eq!(calc_base_points(1, 50, &vec![], RiichiRuleset::Default).unwrap(), 400);
+        assert_eq!(calc_base_points(2, 40, &vec![], RiichiRuleset::Default).unwrap(), 640);
+        assert_eq!(calc_base_points(3, 70, &vec![], RiichiRuleset::Default).unwrap(), 2000);
+        assert_eq!(calc_base_points(4, 40, &vec![], RiichiRuleset::Default).unwrap(), 2000);
+        assert_eq!(calc_base_points(7, 30, &vec![], RiichiRuleset::Default).unwrap(), 3000);
+        assert_eq!(calc_base_points(9, 50, &vec![], RiichiRuleset::Default).unwrap(), 4000);
+        assert_eq!(calc_base_points(11, 40, &vec![], RiichiRuleset::Default).unwrap(), 6000);
+        assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::Default).unwrap(), 6000);
+        assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::MajSoul).unwrap(), 8000);
         
-        assert_eq!(calc_base_points(0, 50), Err(ScoringError::NoYaku));
-        assert_eq!(calc_base_points(0, 10), Err(ScoringError::ValueError(ValueError::BadInput)));
+        assert_eq!(calc_base_points(0, 50, &vec![], RiichiRuleset::Default), Err(ScoringError::NoYaku));
+        assert_eq!(calc_base_points(0, 10, &vec![], RiichiRuleset::Default), Err(ScoringError::ValueError(ValueError::BadInput)));
     }
 
     #[test]
     fn bp_and_split_calc(){
-        assert_eq!(calc_player_split(calc_base_points(4, 40).unwrap(), false, WinType::Tsumo, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(4, 40, &vec![], RiichiRuleset::Default).unwrap(), false, WinType::Tsumo, 0).unwrap(),
                     Payment::Tsumo{dealer: 4000, non_dealer: 2000});
-        assert_eq!(calc_player_split(calc_base_points(2, 50).unwrap(), true, WinType::Tsumo, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(2, 50, &vec![], RiichiRuleset::Default).unwrap(), true, WinType::Tsumo, 0).unwrap(),
                     Payment::DealerTsumo(1600));
-        assert_eq!(calc_player_split(calc_base_points(3, 70).unwrap(), true, WinType::Ron, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(3, 70, &vec![], RiichiRuleset::Default).unwrap(), true, WinType::Ron, 0).unwrap(),
                     Payment::Ron(12000));
     }
 }
