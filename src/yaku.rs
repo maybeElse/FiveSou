@@ -269,10 +269,14 @@ pub fn find_yaku_standard(
         1 => { // sananko is possible here too
             if check_sananko(hand, winning_tile, win_type) { yaku.push_checked(Yaku::Sananko) 
         } },
-        4 => { // pinfu (including open pinfu, which is 0 han but awards fu)
-            for meld in hand.melds {
-                if meld.contains_tile(&winning_tile) { yaku.push_checked(Yaku::Pinfu); break }
-        } },
+        4 if !hand.pair.tile.is_dragon() => { // pinfu (including open pinfu, which is 0 han but awards fu)
+            if let Tile::Wind(wind) = hand.pair.tile {
+                if wind != round_wind && wind != seat_wind {
+                    for meld in hand.melds {
+                        if meld.contains_tile(&winning_tile) { yaku.push_checked(Yaku::Pinfu); break } } }
+            } else {
+                for meld in hand.melds {
+                    if meld.contains_tile(&winning_tile) { yaku.push_checked(Yaku::Pinfu); break } } } },
         _ => () }
 
     let mut ittsuu_seqs = hand_seqs.clone();

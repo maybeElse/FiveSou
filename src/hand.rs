@@ -1031,11 +1031,11 @@ mod tests {
         let hand = compose_hand(make_tiles_from_string("p6,p7,p8,s1,s1,s2,s2,s3,s3,we,we,m1,m2,m3").unwrap(),
             None, Tile::Number{ suit: Suit::Sou, number: 1, red: false }, WinType::Ron, Wind::East, Wind::East,
             None, None, RiichiRuleset::Default).unwrap();
-        assert_eq!(hand.get_yaku(), vec![Yaku::Pinfu, Yaku::Ipeiko]);
+        assert_eq!(hand.get_yaku(), vec![Yaku::Ipeiko]);
 
         let hand = compose_hand(make_tiles_from_string("p6,p7,p8,s1,s1,s1,s2,s2,s2,s3,s3,s3,we,we").unwrap(),
             None, Tile::Number{ suit: Suit::Sou, number: 1, red: false }, WinType::Ron, Wind::East, Wind::East,
             None, None, RiichiRuleset::JPML2023).unwrap();
-        assert_eq!(hand.get_yaku(), vec![Yaku::Pinfu, Yaku::Ipeiko]);
+        assert_eq!(hand.get_yaku(), vec![Yaku::Ipeiko]);
     }
 }
