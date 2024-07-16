@@ -46,6 +46,7 @@ pub trait RuleVariations {
     fn allows_double_riichi(&self) -> bool {true}
     fn allows_nagashi_mangan(&self) -> bool {true}
     fn counts_akadora(&self) -> bool {true}
+    fn allows_open_tanyao(&self) -> bool {true}
 }
 
 impl RuleVariations for RiichiRuleset {
@@ -72,41 +73,101 @@ impl RuleVariations for RiichiRuleset {
         RiichiRuleset::MajSoul | RiichiRuleset::WRC2022 => true, _ => false, } }
 }
 
-// RULESET will be set the first time it's accessed in a thread.
-// If I was doing something more complex with global variables (ie lots of options) this wouldn't be ideal,
-// but for a single one it seems like the safest option.
-// ... although RefCell does make the code for testing stuff a bit more complicated.
-// NOTE: as a result of this, test cases must be run using a containerized test runner (ie Maelstrom)
-thread_local!(pub static RULESET: RefCell<RiichiRuleset> = RefCell::new(get_env_ruleset()));
-
-fn get_env_ruleset() -> RiichiRuleset {
-    match env::var("RIICHI_RULESET") {
-        Ok(val) => { match val.to_lowercase().as_str() {
-            "jpml2022" => return RiichiRuleset::JPML2022,
-            "jpml2023" => return RiichiRuleset::JPML2023,
-            "wrc2022" => return RiichiRuleset::WRC2022,
-            "ema2016" => return RiichiRuleset::EMA2016,
-            "majsoul" | "mahjongsoul" => return RiichiRuleset::MajSoul,
-            _ => (), } } _ => (),
-    } RiichiRuleset::MajSoul // default
-}
-
 mod tests {
     use super::*;
 
-    use std::env;
-    use std::borrow::Borrow;
+    use crate::yaku::Yaku;
     use crate::rulesets::RiichiRuleset;
-    use crate::rulesets::RULESET;
     use crate::rulesets::RuleVariations;
-    use crate::scoring::Payment;
+    use crate::scoring::{Payment, count_han, calc_base_points};
+    use crate::score_hand_from_str;
 
     #[test]
-    fn ruleset_usage_test() {
-        env::set_var("RIICHI_RULESET", "JPML2022");
+    fn test_kiriage_mangan() {
+        assert_eq!(calc_base_points(4,30, &vec![], RiichiRuleset::Default), Ok(1920));
+        assert_eq!(calc_base_points(4,30, &vec![], RiichiRuleset::MajSoul), Ok(2000));
 
-        RULESET.with_borrow(|r| assert!(r == &RiichiRuleset::JPML2022));
-        assert_eq!(RULESET.with_borrow(|r| r.is_rinshan_tsumo()), false);
+        assert_eq!(calc_base_points(3,60, &vec![], RiichiRuleset::Default), Ok(1920));
+        assert_eq!(calc_base_points(3,60, &vec![], RiichiRuleset::MajSoul), Ok(2000));
+
+        // testing with full hands isn't really necessary, but it can't hurt.
+        // 4han30fu: junchan pinfu
+        assert_eq!(score_hand_from_str("s2,s3,s1,s3,s2,p7,p8,p9,p1,p1", "m1,m2,m3", "s1", 's', 'e', 'r', "p8", "", 0, ""), Ok(Payment::Ron(7700)));
+        assert_eq!(score_hand_from_str("s2,s3,s1,s3,s2,p7,p8,p9,p1,p1", "m1,m2,m3", "s1", 's', 'e', 'r', "p8", "", 0, "majsoul"), Ok(Payment::Ron(8000)));
+    
+        assert_eq!(score_hand_from_str("s2,s3,s1,s3,s2,p7,p8,p9,p1,p1", "m1,m2,m3", "s1", 'e', 'e', 'r', "p8", "", 0, ""), Ok(Payment::Ron(11600)));
+        assert_eq!(score_hand_from_str("s2,s3,s1,s3,s2,p7,p8,p9,p1,p1", "m1,m2,m3", "s1", 'e', 'e', 'r', "p8", "", 0, "majsoul"), Ok(Payment::Ron(12000)));
+        
+        // 3han60fu hand
+        assert_eq!(score_hand_from_str("s1,s1,p1,p1,p3,p3,p3", "we,we,we,we|wn,wn,wn,wn", "s1", 's', 'e', 'r', "p8", "", 0, ""), Ok(Payment::Ron(7700)));
+        assert_eq!(score_hand_from_str("s1,s1,p1,p1,p3,p3,p3", "we,we,we,we|wn,wn,wn,wn", "s1", 's', 'e', 'r', "p8", "", 0, "majsoul"), Ok(Payment::Ron(8000)));
+
+        assert_eq!(score_hand_from_str("s1,s1,p1,p1,p3,p3,p3", "we,we,we,we|wn,wn,wn,wn", "s1", 'e', 's', 'r', "p8", "", 0, ""), Ok(Payment::Ron(11600)));
+        assert_eq!(score_hand_from_str("s1,s1,p1,p1,p3,p3,p3", "we,we,we,we|wn,wn,wn,wn", "s1", 'e', 's', 'r', "p8", "", 0, "majsoul"), Ok(Payment::Ron(12000)));
+    }
+    
+    #[test]
+    fn test_yakuman_rules() {
+        // regardless of the ruleset we try to record all valid yakus; stacking/value is only relevant for count_han()
+
+        // double yakuman
+        assert_eq!(count_han(&vec![Yaku::Daisushi], 0, true, RiichiRuleset::Default), 13);
+        assert_eq!(count_han(&vec![Yaku::Daisushi], 0, true, RiichiRuleset::MajSoul), 26);
+
+        // yakuman stacking
+        assert_eq!(count_han(&vec![Yaku::Ryuiso, Yaku::Tenho], 0, true, RiichiRuleset::Default), 26);
+        assert_eq!(count_han(&vec![Yaku::Ryuiso, Yaku::Tenho], 0, true, RiichiRuleset::EMA2016), 13);
+
+        // kazoe yakuman
+        assert_eq!(calc_base_points(14,20,&vec![Yaku::Riichi], RiichiRuleset::Default), Ok(6000));
+        assert_eq!(calc_base_points(14,20,&vec![Yaku::Riichi], RiichiRuleset::MajSoul), Ok(8000));
+
+        assert_eq!(calc_base_points(15,20,&vec![Yaku::Ryuiso], RiichiRuleset::MajSoul), Ok(8000));
+        assert_eq!(calc_base_points(25,20,&vec![Yaku::Ryuiso], RiichiRuleset::MajSoul), Ok(8000));
+        // there's an edge case here where a hand with >13 dora and a yakuman will be scored as if it has two yakuman ...
+        // but count_han() should zero out the dora count when it first encounters a yakuman in the list of yaku,
+        // so that's only an issue if calc_base_points() is called directly.
+    }
+
+    #[test]
+    fn test_fu_rules() {
+        // rinshan fu
+        // jpml2022 treats rinshan as ron for the purposes of fu (ie: no +2 fu for tsumo); all others don't
+        assert_eq!(score_hand_from_str("m7,m9,m9,m9,s9,s9,s9", "ws,ws,ws,ws|s9,s9,s9", "m8", 'e', 'e', 't', "", "rinshan", 0, "jpml2022"), Ok(Payment::DealerTsumo(1600)));
+        assert_eq!(score_hand_from_str("m7,m9,m9,m9,s9,s9,s9", "ws,ws,ws,ws|s9,s9,s9", "m8", 'e', 'e', 't', "", "rinshan", 0, "default"), Ok(Payment::DealerTsumo(2000)));
+
+        assert_eq!(score_hand_from_str("m2,m3,m4,m4,m5,m6,m7,s8,s8,s8", "we,we,we,we", "m1", 'e', 'e', 't', "", "rinshan", 0, "jpml2022"), Ok(Payment::DealerTsumo(2600)));
+        assert_eq!(score_hand_from_str("m2,m3,m4,m4,m5,m6,m7,s8,s8,s8", "we,we,we,we", "m1", 'e', 'e', 't', "", "rinshan", 0, "default"), Ok(Payment::DealerTsumo(3200)));
+
+        // double wind fu
+        // jpml2022 and majsoul(?) give 4 fu for double wind pairs, all others don't
+        // that nudges this hand up from 70 fu (20+2+4+8+32+2+2) to 80 fu (20+2+4+8+32+2+4, rounded up to 80)
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 'e', 'e', 't', "", "", 0, "jpml2022"), Ok(Payment::DealerTsumo(1300)));
+        assert_eq!(score_hand_from_str("s1,s1,s1,s2,s4,we,we", "m9,m9,m9|!dr,dr,dr,dr", "s3", 'e', 'e', 't', "", "", 0, "default"), Ok(Payment::DealerTsumo(1200)));
+    }
+
+    #[test]
+    fn test_all_green_rules() {
+        use crate::{Yaku, Wind, WinType};
+        use crate::hand::{compose_hand, HandTools};
+        use crate::tiles::{make_tiles_from_string, Tile, MakeTile};
+
+        // hatsu is normally optional
+        assert!(compose_hand(make_tiles_from_string("s2,s3,s4,s2,s3,s4,s6,s6,s6,dg,dg,dg,s8,s8").unwrap(), None, Tile::from_string("s2").unwrap(),
+            WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap().get_yaku().contains(&Yaku::Ryuiso));
+        assert!(compose_hand(make_tiles_from_string("s2,s2,s2,s3,s3,s3,s4,s4,s4,s6,s6,s6,s8,s8").unwrap(), None, Tile::from_string("s2").unwrap(),
+            WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap().get_yaku().contains(&Yaku::Ryuiso));
+
+        // jpml2022 made hatsu mandatory
+        assert!(compose_hand(make_tiles_from_string("s2,s3,s4,s2,s3,s4,s6,s6,s6,dg,dg,dg,s8,s8").unwrap(), None, Tile::from_string("s2").unwrap(),
+            WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::JPML2022).unwrap().get_yaku().contains(&Yaku::Ryuiso));
+        assert!(!compose_hand(make_tiles_from_string("s2,s2,s2,s3,s3,s3,s4,s4,s4,s6,s6,s6,s8,s8").unwrap(), None, Tile::from_string("s2").unwrap(),
+            WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::JPML2022).unwrap().get_yaku().contains(&Yaku::Ryuiso));
+    }
+
+    #[test]
+    fn test_allowed_yaku() {
+
     }
 }
 

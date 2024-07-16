@@ -34,7 +34,7 @@ pub fn count_han(
                 Yaku::ClosedTsumo => han_count += 1,
 
                 // based on sequences
-                Yaku::Pinfu => han_count += if closed { 1 } else { 0 },
+                Yaku::Pinfu => han_count += if closed || ruleset.allows_open_tanyao() { 1 } else { 0 },
                 Yaku::Ipeiko => han_count += 1,
                 Yaku::Sanshoku | Yaku::Ittsuu => han_count += if closed { 2 } else { 1 },
                 Yaku::Ryanpeiko => han_count += 3,
@@ -57,7 +57,7 @@ pub fn count_han(
                 // special yaku
                 Yaku::Riichi | Yaku::UnderRiver | Yaku::UnderSea | Yaku::AfterKan | Yaku::RobbedKan => han_count += 1,
                 Yaku::Ippatsu => han_count += if ruleset.allows_ippatsu() { 1 } else { 0 },
-                Yaku::DoubleRiichi => han_count += if ruleset.allows_double_riichi() { 2 } else { 0 },
+                Yaku::DoubleRiichi => han_count += if ruleset.allows_double_riichi() { 2 } else { 1 },
                 Yaku::NagashiMangan => (), // this should only happen if nagashi mangan isn't a valid yaku in the active ruleset.
 
                 // yakuman hands
