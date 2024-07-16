@@ -454,20 +454,21 @@ impl HandTools for Hand {
         match self { Hand::Standard {yaku, ..} | Hand::Chiitoi {yaku, ..} | Hand::Kokushi {yaku, ..} => yaku.clone(), }
     }
     fn get_dora(&self) -> i8 {
-        match self { Hand::Standard {dora, ..} | Hand::Chiitoi {dora, ..} => *dora,
+        match self {
+            Hand::Standard {dora, ..} | Hand::Chiitoi {dora, ..} => *dora,
             Hand::Kokushi {..} => 0, // dora never matters for kokushi
     } }
     fn get_suits(&self) -> Vec<Suit> {
         match self {
             Hand::Standard {full_hand, ..} => full_hand.get_suits(),
-            Hand::Chiitoi {full_hand, ..} => full_hand.get_suits(),
+            Hand::Chiitoi {full_hand, ..} => full_hand.get_suits(), // needs to be a separate case because full_hand's type is different
             Hand::Kokushi {..} => vec![Suit::Man, Suit::Pin, Suit::Sou]
     } }
     fn is_closed(&self) -> bool {
         // TODO: find a better way to grab the field
         match self { 
             Hand::Standard {open, ..} => !*open,
-            Hand::Chiitoi {..} | Hand::Kokushi {..} => true,
+            _ => true,
     } }
     fn get_fu(&self) -> i8 {
         match self { Hand::Standard {fu, ..} | Hand::Chiitoi {fu, ..} | Hand::Kokushi {fu, ..} => *fu } }
