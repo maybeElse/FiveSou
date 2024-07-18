@@ -61,12 +61,12 @@ pub enum Meld {
     },
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 pub struct Pair {
     pub tile: Tile
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartialHand {
     pub hanging_tiles: Vec<Tile>,
     pub melds: Vec<Meld>,
@@ -95,29 +95,40 @@ pub fn make_melds_from_string(
     let input: Vec<&str> = str.split('|').collect();
     for s in input {
         if s.chars().nth(0) == Some('!') {
-            let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s[1..]);
-            if let Ok(val) = t {
-                let tiles: Vec<Tile> = val;
-                if tiles.count_occurances(tiles[0]) == 4 {
-                    melds.push(Meld::Kan{
-                        open: false,
-                        tile: tiles[0]
-                    })
-                } else { panic! ("not a kan!") }
-            } else { panic!("couldn't read a kan!") }
+            if let Ok(tiles) = make_tiles_from_string(&s[1..]) {
+                if let Some(meld) = make_single_meld(tiles, false) {
+                    melds.push(meld);
+                } else { panic!("couldn't make a kan from tiles!")}
+            } else { panic!("failed to read a kan!")}
         } else {
-            let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s);
-            if let Ok(tiles) = t {
-                let m: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(tiles, false, 1, open);
-                if let Some(val) = m {
-                    if let MeldOrPair::Meld(meld) = val[0][0] {
-                        melds.push(meld);
-                    }
+            if let Ok(tiles) = make_tiles_from_string(&s) {
+                if let Some(meld) = make_single_meld(tiles, open) {
+                    melds.push(meld);
                 } else { panic!("couldn't make a meld from tiles!")}
             } else { panic!("failed to read tiles!")}
-        }
-    }
+    } }
     if !melds.is_empty() { Some(melds) } else { None }
+}
+
+pub fn make_single_meld(mut tiles: Vec<Tile>, open: bool) -> Option<Meld> {
+    if tiles.len() == 3 {
+        if tiles.count_occurrences(tiles[0]) == 3 {
+            return Some(Meld::Triplet{tile: tiles[0], open})
+        } else {
+            tiles.sort();
+            if let Some(adj) = tiles[0].adjacent_up() {
+                if adj.contains(&tiles[1]) && adj.contains(&tiles[2]) && tiles[1] != tiles[2] {
+                    return Some(Meld::Sequence{
+                        tiles: [tiles[0], tiles[1], tiles[2]],
+                        open: open
+                    })
+                }
+            }
+        }
+    } else if tiles.len() == 4 && tiles.count_occurrences(tiles[0]) == 4 {
+        return Some(Meld::Kan{tile: tiles[0], open})
+    } else { panic!("bad meld length!") }
+    return None
 }
 
 pub fn compose_hand(
@@ -161,6 +172,7 @@ pub fn compose_hand(
             })
         }
         // seven pairs
+        // TODO: compose_tiles should be able to capture chiitoi now, so integrate this into the code for it
         let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
         if let Some(hand) = chiitoi {
             let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(hand.try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
@@ -179,38 +191,33 @@ pub fn compose_hand(
 
     // now we'll test for normal hand shapes
     // the closed portion of the hand *must* contain the pair, and any melds which haven't been called. simple!
-    let standard_partials: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(closed_tiles, true, (4 - called_tiles.clone().unwrap_or_default().len()) as i8, false);
 
-    if let Some(partials) = standard_partials {
-        let sp_yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
+    let called_melds = called_tiles.unwrap_or_default();
 
+    if let Some(partials) = compose_tiles(&closed_tiles, false) {
         for partial in partials {
-            let mut melds: Vec<Meld> = vec![];
-            let mut pair: Pair = Pair{tile: Tile::Dragon(Dragon::Red) }; // placeholder to initialize the mut
-            if let Some(ref m) = called_tiles {
-                for meld in m { melds.push(*meld) } }
-            for meld_or_pair in partial {
-                match meld_or_pair {
-                    MeldOrPair::Pair(p) => pair = p,
-                    MeldOrPair::Meld(m) => melds.push(m) } }
-            melds.sort();
-            let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
-            let is_open: bool = {
-                if let Some(ref melds) = called_tiles {
-                    if melds.iter().any( |&x| !x.is_closed() ) { true } else { false }
-                } else { false } };
-            if let Ok(yaku) = yaku::find_yaku_standard(hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type, ruleset) {
-                possible_hands.push(
-                    Hand::Standard {
-                        full_hand: hand,
-                        winning_tile: winning_tile,
-                        open: is_open,
-                        yaku: yaku.clone(),
-                        dora: dora,
-                        han: scoring::count_han(&yaku, dora, !is_open, ruleset),
-                        fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, win_type, round_wind, seat_wind, ruleset)?
-                    }
-                )
+            if partial.count_remaining_tiles() == 0 && partial.count_pairs() == 1 && (partial.count_melds() + called_melds.len()) == 4 {
+                let mut melds: Vec<Meld> = {
+                    if let Some(vec) = partial.get_melds() { vec
+                    } else { vec![] } };
+                let pair: Pair = partial.get_pairs().expect("no pair found")[0];
+                for meld in &called_melds { melds.push(*meld) }
+                melds.sort();
+                let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
+                let is_open: bool = called_melds.iter().any( |&x| !x.is_closed() );
+                if let Ok(yaku) = yaku::find_yaku_standard(hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type, ruleset) {
+                    possible_hands.push(
+                        Hand::Standard {
+                            full_hand: hand,
+                            winning_tile: winning_tile,
+                            open: is_open,
+                            yaku: yaku.clone(),
+                            dora: dora,
+                            han: scoring::count_han(&yaku, dora, !is_open, ruleset),
+                            fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, win_type, round_wind, seat_wind, ruleset)?
+                        }
+                    )
+                }
             }
         }
     }
@@ -228,95 +235,79 @@ pub fn compose_hand(
 }
 
 // only for standard hands
-fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<Vec<MeldOrPair>>> {
+//fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<Vec<MeldOrPair>>> {
 
-//fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<PartialHand>> {
-    if (remaining_sets == 0 && !remaining_pairs) || remaining_tiles.len() <= 1 { return None }
-    
-    let mut partials: Vec<Vec<MeldOrPair>> = vec![];
-    let subset: Vec<Tile> = remaining_tiles[1..].to_vec();
-    
-    if remaining_tiles[1 ..].contains(&remaining_tiles[0]) {
-        let dupe_count = remaining_tiles.count_occurances(remaining_tiles[0]);
-        if dupe_count >= 2 && remaining_pairs {
-            let temp: MeldOrPair = MeldOrPair::Pair(Pair{tile: remaining_tiles[0]});
-            let mut subs: Vec<Tile> = subset.clone();
-            
-            subs.remove_x_occurances(remaining_tiles[0], 1);
+fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialHand>> {
+    if remaining_tiles.len() <= 1 { return None
+    } else {
+        let mut partials: Vec<PartialHand> = vec![];
+        let subset: Vec<Tile> = remaining_tiles[1..].to_vec();
+        let first_tile: Tile = remaining_tiles[0];
 
-            if remaining_pairs && remaining_tiles.len() == 2 {
-                partials.push(vec![temp]);
-            } else {
-                let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, false, remaining_sets, open);
-                if let Some(rec) = recursions {
-                    for value in rec {
-                        partials.push([vec![temp.clone()], value].concat());
-                    }
-                }
-            }
-        }
-        
-        if dupe_count >= 3 {
-            let temp: MeldOrPair = MeldOrPair::Meld(Meld::Triplet{tile: remaining_tiles[0], open: open});
-            let mut subs: Vec<Tile> = subset.clone();
-            
-            subs.remove_x_occurances(remaining_tiles[0], 2);
-            if remaining_sets == 1 && remaining_tiles.len() == 3 {
-                partials.push(vec![temp]);
-            } else {
-                let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, remaining_pairs, remaining_sets - 1, open);
-                if let Some(rec) = recursions {
-                    for value in rec {
-                        partials.push([vec![temp.clone()], value].concat());
-                    }
-                } 
-            }
-        }
+        if subset.contains(&first_tile){
+            // for readability of the if/elseif, we'll count dupes based on remaining_tiles instead of subset
+            let dupe_count = remaining_tiles.count_occurrences(first_tile);
 
-        if dupe_count == 4 { // shouldn't happen, included for completeness
-            let temp: MeldOrPair = MeldOrPair::Meld(Meld::Kan{tile: remaining_tiles[0], open: open});
-            let mut subs: Vec<Tile> = subset.clone();
-            
-            subs.remove_x_occurances(remaining_tiles[0], 3);
-            if remaining_sets == 1 && remaining_tiles.len() == 4 {
-                partials.push(vec![temp]);
-            } else {
-                let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, remaining_pairs, remaining_sets - 1, open);
-                if let Some(rec) = recursions {
-                    for value in rec {
-                        partials.push([vec![temp.clone()], value].concat());
-                    }
-                }
-            }
-        }
-    }
+            if dupe_count >= 2 {
+                let temp: Pair = Pair{tile: first_tile};
+                let mut subs: Vec<Tile> = subset.clone();
 
-    if remaining_tiles[0].is_numbered() {
-        let possible_sequences: Vec<[Tile; 2]> = remaining_tiles[0].adjacent_all();
-        
-        for seq in possible_sequences {
-            let mut subset: Vec<Tile> = remaining_tiles[1..].to_vec();
-            if subset.contains(&seq[0]) && subset.contains(&seq[1]) {
-                let temp: MeldOrPair = MeldOrPair::Meld(Meld::Sequence{tiles: [remaining_tiles[0], seq[0], seq[1]], open: open});
+                subs.remove_x_occurrences(first_tile, 1);
 
-                subset.remove(subset.iter().position(|x| *x == seq[0])?);
-                subset.remove(subset.iter().position(|x| *x == seq[1])?);
-
-                if remaining_sets == 1 && remaining_tiles.len() == 3 {
-                    partials.push(vec![temp]);
+                if let Some(recursions) = compose_tiles(&subs, open) {
+                    for value in recursions {
+                        partials.push( value.with_pair(temp) ) }
                 } else {
-                    let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subset, remaining_pairs, remaining_sets - 1, open);
-                    if let Some(values) = recursions {
-                        for v in values {
-                            partials.push([vec![temp.clone()], v].concat());
-                        }
-                    }
+                    partials.push( PartialHand{
+                            hanging_tiles: subs.clone(),
+                            melds: vec![],
+                            pairs: vec![temp] } ) }
+            }
+
+            if dupe_count >= 3 {
+                let temp: Meld = Meld::Triplet{tile: first_tile, open};
+                let mut subs: Vec<Tile> = subset.clone();
+
+                subs.remove_x_occurrences(first_tile, 2);
+
+                if let Some(recursions) = compose_tiles(&subs, open) {
+                    for value in recursions {
+                        partials.push( value.with_meld(temp) ) }
+                } else {
+                    partials.push( PartialHand{
+                            hanging_tiles: subs.clone(),
+                            melds: vec![temp],
+                            pairs: vec![] } ) }
+            }
+        }
+
+        if first_tile.is_numbered() {
+            let possible_sequences: Vec<[Tile; 2]> = first_tile.adjacent_all();
+
+            for seq in possible_sequences {
+                if subset.contains(&seq[0]) && subset.contains(&seq[1]) {
+                    let mut subs: Vec<Tile> = subset.clone();
+                    let temp: Meld = Meld::Sequence{tiles: [remaining_tiles[0], seq[0], seq[1]], open: open};
+
+                    subs.remove(subs.iter().position(|x| *x == seq[0])?);
+                    subs.remove(subs.iter().position(|x| *x == seq[1])?);
+
+                    if let Some(recursions) = compose_tiles(&subs, open) {
+                        for value in recursions {
+                            partials.push( value.with_meld(temp) ) }
+                    } else {
+                        partials.push( PartialHand{
+                                hanging_tiles: subs.clone(),
+                                melds: vec![temp],
+                                pairs: vec![] } ) }
                 }
             }
-        } 
-    }
+        }
 
-    if partials.is_empty() { return None } else { return Some(partials) }
+        if partials.is_empty() { return None } else {
+            return Some(partials)
+        }
+    }
 }
 
 fn compose_chiitoi(
@@ -847,15 +838,15 @@ impl SequenceHelpers for Meld {
 }
 
 pub trait VecTileHelpers {
-    fn count_occurances(&self, tile: Tile) -> i8;
-    fn remove_x_occurances(&mut self, tile: Tile, count: i8) -> ();
+    fn count_occurrences(&self, tile: Tile) -> i8;
+    fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> ();
 }
 
 impl VecTileHelpers for Vec<Tile> {
-    fn count_occurances(&self, tile: Tile) -> i8 {
+    fn count_occurrences(&self, tile: Tile) -> i8 {
         self.iter().fold(0, |acc, value| {if tile == *value { acc + 1 } else { acc }})
     }
-    fn remove_x_occurances(&mut self, tile: Tile, count: i8) -> () {
+    fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> () {
         for i in 0..count {
             self.remove(self.iter().position(|x| *x == tile).unwrap());
         }
@@ -920,21 +911,48 @@ impl fmt::Display for Hand {
 pub trait PartialHelpers {
     fn get_waits(&self) -> Option<Vec<Tile>>;
     fn get_melds(&self) -> Option<Vec<Meld>>;
+    fn count_melds(&self) -> usize;
     fn get_pairs(&self) -> Option<Vec<Pair>>;
-    fn get_remaining(&self) -> Option<Vec<Tile>>;
-    fn merged(&self, other: Self) -> Self where Self: Sized;
+    fn count_pairs(&self) -> usize;
+    fn get_remaining_tiles(&self) -> Option<Vec<Tile>>;
+    fn count_remaining_tiles(&self) -> usize;
     fn is_complete(&self) -> bool;
+    fn with_pair(&self, pair: Pair) -> Self where Self: Sized;
+    fn with_meld(&self, meld: Meld) -> Self where Self: Sized;
 }
 
-// impl PartialHelpers for PartialHand {
-//     fn get_waits(&self) -> Option<Vec<Tile>> {}
-//     fn get_melds(&self) -> Option<Vec<Meld>> {}
-//     fn get_pairs(&self) -> Option<Vec<Pair>> {}
-//     fn get_remaining(&self) -> Option<Vec<Tile>> {}
-//     fn merged(&self, other: PartialHand) -> PartialHand {
-
-//     }
-// }
+impl PartialHelpers for PartialHand {
+    fn get_waits(&self) -> Option<Vec<Tile>> { panic!() }
+    fn get_melds(&self) -> Option<Vec<Meld>> {
+        if self.melds.is_empty() { None } else { Some(self.melds.clone()) } }
+    fn count_melds(&self) -> usize { self.melds.len() }
+    fn get_pairs(&self) -> Option<Vec<Pair>> {
+        if self.pairs.is_empty() { None } else { Some(self.pairs.clone()) } }
+    fn count_pairs(&self) -> usize { self.pairs.len() }
+    fn get_remaining_tiles(&self) -> Option<Vec<Tile>> {
+        if self.hanging_tiles.is_empty() { None } else { Some(self.hanging_tiles.clone()) } }
+    fn count_remaining_tiles(&self) -> usize { self.hanging_tiles.len() }
+    fn is_complete(&self) -> bool {
+        if self.hanging_tiles.len() == 0 { 
+            if (self.melds.len() == 4 && self.pairs.len() == 1) || (self.melds.len() == 0 && self.pairs.len() == 7) { return true }
+        } false }
+    fn with_pair(&self, pair: Pair) -> PartialHand {
+        let mut pairs = [self.pairs.clone(), vec![pair]].concat();
+        pairs.sort();
+        PartialHand{
+            hanging_tiles: self.hanging_tiles.clone(),
+            melds: self.melds.clone(),
+            pairs: pairs
+    } }
+    fn with_meld(&self, meld: Meld) -> PartialHand {
+        let mut melds = [self.melds.clone(), vec![meld]].concat();
+        melds.sort();
+        PartialHand{
+            hanging_tiles: self.hanging_tiles.clone(),
+            pairs: self.pairs.clone(),
+            melds: melds
+    } }
+}
 
 ///////////
 // tests //
@@ -955,51 +973,61 @@ mod tests {
 
     #[test]
     fn test_reading_hand_composition(){
-        assert_eq!(compose_tiles(make_tiles_from_string("we,we").unwrap(), true, 0, false),
-            Some(vec![vec![ MeldOrPair::Pair(Pair{tile: Tile::Wind(Wind::East) }) ] ])
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,dw,we,we,we").unwrap(), false, 2, false),
-            Some(vec![vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }), 
-                    MeldOrPair::Meld(Meld::Triplet{tile: Tile::Wind(Wind::East), open: false })]])
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,dw,we,we").unwrap(), true, 1, false),
-            Some(vec![vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }), 
-                    MeldOrPair::Pair(Pair{tile: Tile::Wind(Wind::East) }) ] ])
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("dw,dw,we,we,we").unwrap(), true, 1, false),
-            Some(vec![vec![ MeldOrPair::Pair(Pair{tile: Tile::Dragon(Dragon::White) }),
-                    MeldOrPair::Meld(Meld::Triplet{tile: Tile::Wind(Wind::East), open: false }), ] ])
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("m1,m2,m3,p4,p5r,p3").unwrap(), false, 2, false),
-            Some(vec![vec![ MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
-                    MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Pin, number: 3, red: false },
-                                                            Tile::Number{ suit: Suit::Pin, number: 4, red: false },
-                                                            Tile::Number{ suit: Suit::Pin, number: 5, red: true } ], open: false}) ]])
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("dw,dr,p4,dw,p5r,p3,dr,dw,m2,m2,m2").unwrap(), true, 3, false), 
-            Some(vec![vec![ MeldOrPair::Pair(Pair{tile: Tile::Dragon(Dragon::Red) }),
-                    MeldOrPair::Meld(Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }),
-                    MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false}, open: false }),
-                    MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Pin, number: 3, red: false },
-                                                            Tile::Number{ suit: Suit::Pin, number: 4, red: false },
-                                                            Tile::Number{ suit: Suit::Pin, number: 5, red: true } ], open: false}) ] ]) 
-            );
-        assert_eq!(compose_tiles(make_tiles_from_string("m1,m1,m1,m2,m2,m2,m3,m3,m3").unwrap(), false, 3, false),
-            Some(vec![vec![ MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, open: false }),
-                                        MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false }, open: false }),
-                                        MeldOrPair::Meld(Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 3, red: false }, open: false }) ],
-                vec![ MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
-                    MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),
-                    MeldOrPair::Meld(Meld::Sequence{tiles: [Tile::Number{ suit: Suit::Man, number: 1, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 2, red: false },
-                                                            Tile::Number{ suit: Suit::Man, number: 3, red: false } ], open: false}),]])
-            ); 
+        let mut tiles = compose_tiles(&make_tiles_from_string("we,we").unwrap(), true).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                pairs: vec![ Pair{tile: Tile::Wind(Wind::East)} ],
+                melds: vec![],
+                hanging_tiles: vec![] }]);
+        let mut tiles = compose_tiles(&make_tiles_from_string("dw,dw,dw,we,we,we").unwrap(), false).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                pairs: vec![],
+                melds: vec![Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false },
+                            Meld::Triplet{tile: Tile::Wind(Wind::East), open: false }, ],
+                hanging_tiles: vec![] }]);
+        let mut tiles = compose_tiles(&make_tiles_from_string("dw,dw,dw,we,we").unwrap(), true).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                pairs: vec![Pair{tile: Tile::Wind(Wind::East) }],
+                melds: vec![Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false }],
+                hanging_tiles: vec![] }]);
+        let mut tiles = compose_tiles(&make_tiles_from_string("dw,dw,we,we,we").unwrap(), true).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                pairs: vec![Pair{tile: Tile::Dragon(Dragon::White)}],
+                melds: vec![Meld::Triplet{tile: Tile::Wind(Wind::East), open: false }],
+                hanging_tiles: vec![] }]);
+        let mut tiles = compose_tiles(&make_tiles_from_string("m1,m2,m3,p4,p5r,p3").unwrap(), false).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, (vec![PartialHand {
+                pairs: vec![],
+                melds: vec![Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},
+                            Meld::Sequence{tiles: [Tile::from_string("p3").unwrap(), Tile::from_string("p4").unwrap(), Tile::from_string("p5r").unwrap()], open: false},],
+                hanging_tiles: vec![] }]) );
+        let mut tiles = compose_tiles(&make_tiles_from_string("dw,dr,p4,dw,p5r,p3,dr,dw,m2,m2,m2").unwrap(), true).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                pairs: vec![Pair{tile: Tile::Dragon(Dragon::Red)}],
+                melds: vec![Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false}, open: false },
+                            Meld::Triplet{tile: Tile::Dragon(Dragon::White), open: false },
+                            Meld::Sequence{tiles: [Tile::from_string("p3").unwrap(), Tile::from_string("p4").unwrap(), Tile::from_string("p5r").unwrap()], open: false},],
+                hanging_tiles: vec![] }]);
+        let mut tiles = compose_tiles(&make_tiles_from_string("m1,m1,m1,m2,m2,m2,m3,m3,m3").unwrap(), false).unwrap();
+        tiles.retain(|x| x.count_remaining_tiles() == 0 && x.count_pairs() == 0);
+        assert_eq!(tiles, vec![PartialHand {
+                    pairs: vec![],
+                    melds: vec![Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, open: false },
+                                Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false }, open: false },
+                                Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 3, red: false }, open: false },],
+                    hanging_tiles: vec![] },
+                PartialHand {
+                    pairs: vec![],
+                    melds: vec![Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},
+                                Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},
+                                Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},],
+                    hanging_tiles: vec![] },
+                ]);
     }
 
     #[test]

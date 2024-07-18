@@ -311,7 +311,7 @@ pub fn find_yaku_standard(
                 // basic criteria: no kans, and either 1 or 2 triplets
                 if !open && hand.count_kans() == 0 && check_churenpoto(hand) {
                     yaku.push_checked(Yaku::ChurenPoto);
-                    if hand.as_tiles().count_occurances(winning_tile) >= 2 {
+                    if hand.as_tiles().count_occurrences(winning_tile) >= 2 {
                         yaku.push_checked(Yaku::SpecialWait)
             } } }
 
