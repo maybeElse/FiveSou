@@ -66,6 +66,13 @@ pub struct Pair {
     pub tile: Tile
 }
 
+#[derive(Debug, Clone)]
+pub struct PartialHand {
+    pub hanging_tiles: Vec<Tile>,
+    pub melds: Vec<Meld>,
+    pub pairs: Vec<Pair>,
+}
+
 // wrapper enum for recursion in compose_tiles()
 #[derive(Debug, PartialEq, Clone)]
 pub enum MeldOrPair {
@@ -89,8 +96,8 @@ pub fn make_melds_from_string(
     for s in input {
         if s.chars().nth(0) == Some('!') {
             let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s[1..]);
-            if t.is_ok() {
-                let tiles: Vec<Tile> = t.unwrap();
+            if let Ok(val) = t {
+                let tiles: Vec<Tile> = val;
                 if tiles.count_occurances(tiles[0]) == 4 {
                     melds.push(Meld::Kan{
                         open: false,
@@ -100,10 +107,10 @@ pub fn make_melds_from_string(
             } else { panic!("couldn't read a kan!") }
         } else {
             let t: Result<Vec<Tile>, ScoringError> = make_tiles_from_string(&s);
-            if t.is_ok() {
-                let m: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(t.unwrap(), false, 1, open);
-                if m.is_some() {
-                    if let MeldOrPair::Meld(meld) = m.unwrap()[0][0] {
+            if let Ok(tiles) = t {
+                let m: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(tiles, false, 1, open);
+                if let Some(val) = m {
+                    if let MeldOrPair::Meld(meld) = val[0][0] {
                         melds.push(meld);
                     }
                 } else { panic!("couldn't make a meld from tiles!")}
@@ -122,27 +129,28 @@ pub fn compose_hand(
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
 
-    let dora: i8 = if dora_markers.is_none() { 0 } else {
-        let dora: Vec<Tile> = dora_markers.unwrap().iter().map(|x| x.dora()).collect();
-        closed_tiles.iter().fold(0, |acc, x| { if dora.contains(x) { acc + 1 } else { acc } }) + {
-            if called_tiles.is_some() { // TODO: refactor
-                called_tiles.clone().unwrap().iter().fold(0, |acc, x| { 
-                    match x {
-                        Meld::Sequence {tiles, ..} => if tiles.iter().any(|&t| dora.contains(&t)) { return acc + 1},
-                        Meld::Triplet {tile, ..} => if dora.contains(tile) { return acc + 3 },
-                        Meld::Kan {tile, ..} =>  if dora.contains(tile) { return acc + 4 },
-                    } acc } )
-            } else { 0 } }
-    };
+    let dora: i8 = {
+        if let Some(d) = dora_markers {
+            let dora: Vec<Tile> = d.iter().map(|x| x.dora()).collect();
+            closed_tiles.iter().fold(0, |acc, x| { if dora.contains(x) { acc + 1 } else { acc } }) + {
+                if let Some(ref melds) = called_tiles {
+                    melds.iter().fold(0, |acc, x| { 
+                        match x {
+                            Meld::Sequence {tiles, ..} => if tiles.iter().any(|&t| dora.contains(&t)) { return acc + 1},
+                            Meld::Triplet {tile, ..} => if dora.contains(tile) { return acc + 3 },
+                            Meld::Kan {tile, ..} =>  if dora.contains(tile) { return acc + 4 },
+                        } acc } )
+                } else { 0 } }
+        } else { 0 } };
     
     // first of all, test for strange hand shapes
     if closed_tiles.len() == 14 && called_tiles.is_none() {
         // thirteen orphans
         let kokushi: Option<Vec<Yaku>> = compose_kokushi(closed_tiles.clone(), winning_tile);
-        if kokushi.is_some() {
+        if let Some(hand) = kokushi {
             // a thirteen orphan hand can't be anything else (except special yakuman),
             // so we'll just return it after seeing if the Vec<Yaku> accepts any of the special yaku.
-            let mut kokushi = kokushi.unwrap();
+            let mut kokushi = hand;
             kokushi.append_checked(&special_yaku.clone().unwrap_or_default());
             return Ok(Hand::Kokushi{
                 full_hand: closed_tiles.try_into().unwrap(),
@@ -154,11 +162,11 @@ pub fn compose_hand(
         }
         // seven pairs
         let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
-        if chiitoi.is_some() {
-            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(chiitoi.unwrap().try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
+        if let Some(hand) = chiitoi {
+            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(hand.try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
             possible_hands.push(
                 Hand::Chiitoi{
-                    full_hand: chiitoi.unwrap().try_into().unwrap(),
+                    full_hand: hand.try_into().unwrap(),
                     winning_tile: winning_tile, 
                     yaku: yaku.clone(),
                     dora: dora,
@@ -173,22 +181,24 @@ pub fn compose_hand(
     // the closed portion of the hand *must* contain the pair, and any melds which haven't been called. simple!
     let standard_partials: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(closed_tiles, true, (4 - called_tiles.clone().unwrap_or_default().len()) as i8, false);
 
-    if standard_partials.is_some() {
+    if let Some(partials) = standard_partials {
         let sp_yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
 
-        for partial in standard_partials.unwrap() {
+        for partial in partials {
             let mut melds: Vec<Meld> = vec![];
             let mut pair: Pair = Pair{tile: Tile::Dragon(Dragon::Red) }; // placeholder to initialize the mut
-            if called_tiles.is_some() {
-                for m in called_tiles.clone().unwrap() {
-                    melds.push(m) } }
+            if let Some(ref m) = called_tiles {
+                for meld in m { melds.push(*meld) } }
             for meld_or_pair in partial {
                 match meld_or_pair {
                     MeldOrPair::Pair(p) => pair = p,
                     MeldOrPair::Meld(m) => melds.push(m) } }
             melds.sort();
             let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
-            let is_open: bool =  if called_tiles.is_some() && called_tiles.as_ref().unwrap().iter().any( |&x| !x.is_closed() ) { true } else { false };
+            let is_open: bool = {
+                if let Some(ref melds) = called_tiles {
+                    if melds.iter().any( |&x| !x.is_closed() ) { true } else { false }
+                } else { false } };
             if let Ok(yaku) = yaku::find_yaku_standard(hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type, ruleset) {
                 possible_hands.push(
                     Hand::Standard {
@@ -211,15 +221,16 @@ pub fn compose_hand(
         _ => {
             let max_han: Option<Hand> = possible_hands.iter().max_by_key(|&p|
                 scoring::calc_base_points(p.get_han(), p.get_fu(), &p.get_yaku(), ruleset).unwrap() ).cloned();
-            if max_han.is_some() { return Ok(max_han.unwrap().clone())
+            if let Some(han) = max_han { return Ok(han)
             } else { return Err(ScoringError::NoHands) }
         },
     }
 }
 
 // only for standard hands
-// note: remaining_pairs is 
 fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<Vec<MeldOrPair>>> {
+
+//fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<PartialHand>> {
     if (remaining_sets == 0 && !remaining_pairs) || remaining_tiles.len() <= 1 { return None }
     
     let mut partials: Vec<Vec<MeldOrPair>> = vec![];
@@ -237,8 +248,8 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_se
                 partials.push(vec![temp]);
             } else {
                 let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, false, remaining_sets, open);
-                if recursions.is_some() {
-                    for value in recursions.unwrap() {
+                if let Some(rec) = recursions {
+                    for value in rec {
                         partials.push([vec![temp.clone()], value].concat());
                     }
                 }
@@ -254,8 +265,8 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_se
                 partials.push(vec![temp]);
             } else {
                 let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, remaining_pairs, remaining_sets - 1, open);
-                if recursions.is_some() {
-                    for value in recursions.unwrap() {
+                if let Some(rec) = recursions {
+                    for value in rec {
                         partials.push([vec![temp.clone()], value].concat());
                     }
                 } 
@@ -271,11 +282,11 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_se
                 partials.push(vec![temp]);
             } else {
                 let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subs, remaining_pairs, remaining_sets - 1, open);
-                if recursions.is_some() {
-                    for value in recursions.unwrap() {
+                if let Some(rec) = recursions {
+                    for value in rec {
                         partials.push([vec![temp.clone()], value].concat());
                     }
-                } 
+                }
             }
         }
     }
@@ -295,9 +306,9 @@ fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_se
                     partials.push(vec![temp]);
                 } else {
                     let recursions: Option<Vec<Vec<MeldOrPair>>> = compose_tiles(subset, remaining_pairs, remaining_sets - 1, open);
-                    if recursions.is_some() {
-                        for value in recursions.unwrap() {
-                            partials.push([vec![temp.clone()], value].concat());
+                    if let Some(values) = recursions {
+                        for v in values {
+                            partials.push([vec![temp.clone()], v].concat());
                         }
                     }
                 }
@@ -905,6 +916,25 @@ impl fmt::Display for Hand {
         }
     }
 }
+
+pub trait PartialHelpers {
+    fn get_waits(&self) -> Option<Vec<Tile>>;
+    fn get_melds(&self) -> Option<Vec<Meld>>;
+    fn get_pairs(&self) -> Option<Vec<Pair>>;
+    fn get_remaining(&self) -> Option<Vec<Tile>>;
+    fn merged(&self, other: Self) -> Self where Self: Sized;
+    fn is_complete(&self) -> bool;
+}
+
+// impl PartialHelpers for PartialHand {
+//     fn get_waits(&self) -> Option<Vec<Tile>> {}
+//     fn get_melds(&self) -> Option<Vec<Meld>> {}
+//     fn get_pairs(&self) -> Option<Vec<Pair>> {}
+//     fn get_remaining(&self) -> Option<Vec<Tile>> {}
+//     fn merged(&self, other: PartialHand) -> PartialHand {
+
+//     }
+// }
 
 ///////////
 // tests //

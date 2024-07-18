@@ -154,8 +154,7 @@ impl TileHelpers for Tile {
         let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
         let mut vec: Vec<[Tile; 2]> = vec![];
         for element in arr.iter() {
-            if element.is_some() { vec.push(element.unwrap()) }
-        }
+            if let Some(e) = element { vec.push(*e) } }
         vec
     }
     fn adjacent_up(&self)  -> Option<[Tile; 2]> {
