@@ -180,22 +180,6 @@ pub fn compose_hand(
                 fu: 20
             })
         }
-        // seven pairs
-        // TODO: compose_tiles should be able to capture chiitoi now, so integrate this into the code for it
-        let chiitoi: Option<[Pair; 7]> = compose_chiitoi(closed_tiles.clone());
-        if let Some(hand) = chiitoi {
-            let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(hand.try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
-            possible_hands.push(
-                Hand::Chiitoi{
-                    full_hand: hand.try_into().unwrap(),
-                    winning_tile: winning_tile, 
-                    yaku: yaku.clone(),
-                    dora: dora,
-                    han: scoring::count_han(&yaku, dora, true, ruleset),
-                    fu: 25
-                }
-            );
-        }
     }
 
     // now we'll test for normal hand shapes
@@ -227,6 +211,18 @@ pub fn compose_hand(
                         }
                     )
                 }
+            } else if partial.count_remaining_tiles() == 0 && partial.count_pairs() == 7 && (partial.count_melds() + called_melds.len()) == 0 {
+                let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(partial.pairs.clone().try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
+                possible_hands.push(
+                    Hand::Chiitoi{
+                        full_hand: partial.pairs.try_into().unwrap(),
+                        winning_tile: winning_tile, 
+                        han: scoring::count_han(&yaku, dora, true, ruleset),
+                        yaku: yaku,
+                        dora: dora,
+                        fu: 25
+                    }
+                );
             }
         }
     }
@@ -300,24 +296,6 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialH
             return Some(partials)
         }
     }
-}
-
-fn compose_chiitoi(
-    mut tiles: Vec<Tile>
-) -> Option<[Pair; 7]> {
-    if tiles.len() != 14 { return None }
-    tiles.sort();
-    
-    let mut pairs: Vec<Pair> = vec![];
-    for i in 0..7 {
-        if tiles[2*i] == tiles[(2*i)+1] && tiles[i] != tiles[i+2] {
-            pairs.push(Pair{tile: tiles[i]});
-        } else { return None }
-    }
-
-    if pairs.len() == 7 {
-        return Some(pairs.try_into().unwrap())
-    } else { return None }
 }
 
 fn compose_kokushi(
