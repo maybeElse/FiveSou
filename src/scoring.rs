@@ -1,4 +1,4 @@
-use crate::errors::errors::{ScoringError, ParsingError, ValueError};
+use crate::errors::errors::{HandError, ParsingError, ValueError};
 use crate::yaku::{Yaku, WinType, YAKUMAN, YakuHelpers};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, MeldOrPair, SequenceHelpers};
@@ -74,7 +74,7 @@ pub fn count_han(
 pub fn count_fu(
     full_hand: &FullHand, winning_tile: &Tile, open: bool, yaku: &Vec<Yaku>,
     win_type: WinType, round_wind: Wind, seat_wind: Wind, ruleset: RiichiRuleset
-) -> Result<i8, ScoringError> {
+) -> Result<i8, HandError> {
     let mut fu: i8 = 20;                                // 20 fu for winning
 
     if let WinType::Ron = win_type { 
@@ -121,12 +121,12 @@ pub fn count_fu(
     Ok( round_tens(fu) ) // round up to nearest 10
 }
 
-pub fn calc_base_points( han: i8, fu: i8, yaku: &Vec<Yaku>, ruleset: RiichiRuleset ) -> Result<i32, ScoringError> {
+pub fn calc_base_points( han: i8, fu: i8, yaku: &Vec<Yaku>, ruleset: RiichiRuleset ) -> Result<i32, HandError> {
     if han < 0 || fu < 20 {
-        return Err(ScoringError::ValueError(ValueError::BadInput))
+        return Err(HandError::ValueError(ValueError::BadInput))
     } else {
         match han {
-            0 => return Err(ScoringError::NoYaku),
+            0 => return Err(HandError::NoYaku),
             1 ..= 4 => {
                 let bp: i32 = (fu as i32) * (2_i32.pow(2 + (han as u32)));
                 if bp > 2000 { Ok(2000)
@@ -147,7 +147,7 @@ pub fn calc_player_split(
     is_dealer: bool,
     win_type: WinType,
     repeats: i8
-) -> Result<Payment, ScoringError> {
+) -> Result<Payment, HandError> {
     match win_type {
         WinType::Tsumo => {
             if is_dealer { Ok(Payment::DealerTsumo( round_hundreds(base * 2) )) }
@@ -191,8 +191,8 @@ mod tests {
         assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::Default).unwrap(), 6000);
         assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::MajSoul).unwrap(), 8000);
         
-        assert_eq!(calc_base_points(0, 50, &vec![], RiichiRuleset::Default), Err(ScoringError::NoYaku));
-        assert_eq!(calc_base_points(0, 10, &vec![], RiichiRuleset::Default), Err(ScoringError::ValueError(ValueError::BadInput)));
+        assert_eq!(calc_base_points(0, 50, &vec![], RiichiRuleset::Default), Err(HandError::NoYaku));
+        assert_eq!(calc_base_points(0, 10, &vec![], RiichiRuleset::Default), Err(HandError::ValueError(ValueError::BadInput)));
     }
 
     #[test]
