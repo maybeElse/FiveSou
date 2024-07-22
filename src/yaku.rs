@@ -1,6 +1,6 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
 use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecTileHelpers, VecMeldHelpers};
-use crate::errors::errors::{ScoringError, ParsingError};
+use crate::errors::errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use core::fmt;
 
@@ -170,7 +170,7 @@ pub fn find_yaku_standard(
     round_wind: Wind,
     win_type: WinType,
     ruleset: RiichiRuleset
-) -> Result<Vec<Yaku>, ScoringError> {
+) -> Result<Vec<Yaku>, HandError> {
     // given four values, returns true if three of them are equal
     fn three_in_common<T: std::cmp::PartialEq>(a: T, b: T, c: T, d: T) -> bool {
         (a == b || c == d ) && (a == c || b == d) }
@@ -311,7 +311,7 @@ pub fn find_yaku_standard(
                 // basic criteria: no kans, and either 1 or 2 triplets
                 if !open && hand.count_kans() == 0 && check_churenpoto(hand) {
                     yaku.push_checked(Yaku::ChurenPoto);
-                    if hand.as_tiles().count_occurrences(winning_tile) >= 2 {
+                    if hand.as_tiles().count_occurrences(&winning_tile) >= 2 {
                         yaku.push_checked(Yaku::SpecialWait)
             } } }
 
@@ -357,14 +357,14 @@ pub fn find_yaku_standard(
         if hand.pair.is_dragon() { yaku.push_checked(Yaku::Shosangen)
         } else { yaku.push_checked(Yaku::Daisangen) } }
 
-    if yaku.len() == 0 { Err(ScoringError::NoYaku) } else { Ok(yaku) }
+    if yaku.len() == 0 { Err(HandError::NoYaku) } else { Ok(yaku) }
 }
 
 // chiitoi is only eligible for a few yaku:
 // tanyao, honro, honitsu, chinitsu, and daichiishin
 pub fn find_yaku_chiitoi(
     hand: [Pair; 7], winning_tile: Tile, special_yaku: &Option<Vec<Yaku>>, win_type: WinType,
-) -> Result<Vec<Yaku>, ScoringError> {
+) -> Result<Vec<Yaku>, HandError> {
     let mut yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
     yaku.push_checked(Yaku::Chiitoi);
     if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }

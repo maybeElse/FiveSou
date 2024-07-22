@@ -13,7 +13,7 @@ use crate::tiles::{Tile, Wind, MakeTile};
 use crate::hand::{Meld, Hand, HandTools};
 use crate::yaku::{WinType, YakuHelpers, Yaku};
 use crate::scoring::{Payment};
-use crate::errors::errors::{ScoringError};
+use crate::errors::errors::{HandError};
 use crate::rulesets::{RiichiRuleset, RuleVariations, FromString};
 use std::io;
 
@@ -30,7 +30,7 @@ pub fn score_hand_from_str( // note: this depends on specificly formatted input,
     special_yaku: &str,     // comma-separated special yaku names, ie "riichi,ippatsu"
     repeat_counts: usize,   // number of repeat counters on the table
     ruleset: &str           // which ruleset to use
-) -> Result<Payment, ScoringError> {
+) -> Result<Payment, HandError> {
     let dora: Vec<Tile> = tiles::make_tiles_from_string(dora_markers).unwrap_or_default();
     let sp_yaku: Vec<Yaku> = Vec::<Yaku>::from_string(special_yaku).unwrap_or_default();
 
@@ -62,7 +62,7 @@ pub fn score_hand_from_structs(
     special_yaku: Option<Vec<Yaku>>,
     repeats: i8,
     ruleset: RiichiRuleset
-) -> Result<Payment, ScoringError> {
+) -> Result<Payment, HandError> {
     let hand: Hand = hand::compose_hand(
         closed_tiles, called_tiles, winning_tile, win_type, seat_wind, round_wind, 
         special_yaku.clone(), dora_markers, ruleset

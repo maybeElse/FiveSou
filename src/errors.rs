@@ -1,6 +1,6 @@
 pub mod errors {
     #[derive(Debug, PartialEq)]
-    pub enum ScoringError {
+    pub enum HandError {
         NoYaku,
         TileCount,
         ValueError(ValueError),
