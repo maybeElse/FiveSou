@@ -1,4 +1,5 @@
 # Mahjong Scorer Design Document
+(reflects initial planning, not current state)
 
 ## Required Information:
 - Hand
@@ -104,8 +105,39 @@ Enum: YakuSpecial 	(Yaku which cannot be determined from hand shape)
 				After a Kan (must be tsumo)
 				Robbing a Kan (must be ron)
 				Nagashi Mangan
-Enum: ScoringError
+Enum: HandError
 ```
 
+# Reading Waits
 
-## Test Cases:
+## What does it mean to be in Tenpai?
+The addition of one tile will complete the hand, causing it to have *either* 4-melds-and-a-pair, 7-pairs, or to match the 13-orphan pattern of 12-orphans-and-a-pair. Under some rulesets (*atozuke nashi*) a hand cannot win if it only gains yaku upon the winning call.
+
+## So ...
+Not after a draw:
+- If the incomplete hand has three melds and a pair, the two remaining tiles are either identical (waiting on a third; this implies a second wait involving the pair), adjacent numbers in the same suit (a double-side or edge wait), or one-apart numbers in the same suit (a middle wait).
+- If the incomplete hand has four melds, the one remaining tile is the wait.
+- If the incomplete hand has six pairs, the one remaining tile is the wait.
+- Kokushi is a special case.
+
+After a draw:
+- If the incomplete hand has three melds and a pair, at least two of the remaining three tiles satisfy the conditions above and the three tiles are not a complete meld. One of them needs to be discarded.
+- If the incomplete hand has four melds and two singleton tiles, one of the singletons must be discarded for the remaining one to become the wait.
+- If the incomplete hand has six pairs and two singletons, one of the singletons must be discarded for the remaining one to become the wait.
+- Kokushi is a special case.
+
+Incomplete hands which do not satisfy at least one of these criteria might be Iishanten; this should be a seperate pipeline.
+
+## So ...
+```
+	read_waits(
+		called_melds = Vec: Meld
+		closed_tiles = Vec: Tile
+	) -> Vec: Waits
+```
+
+This wraps `compose_tiles()` (see hand.rs) and operates on the `Vec<PartialHand>` it returns.
+
+Waits is an enum representing the two possibilities (a list of waits and the discard/wait pairs). Discard/wait pairs are tuples like `(tile, [tile])`.
+
+... I could also extend `compose_hand`'s Err(HandError) return to handle tenpai (&etc) hands.
