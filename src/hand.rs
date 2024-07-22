@@ -146,6 +146,20 @@ pub fn compose_hand(
     winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
     special_yaku: Option<Vec<Yaku>>, dora_markers: Option<Vec<Tile>>, ruleset: RiichiRuleset
 ) -> Result<Hand, HandError> {
+    fn compose_kokushi( partial: PartialHand, winning_tile: Tile) -> Option<Vec<Yaku>> {
+        let mut tracker: Vec<Tile> = vec![partial.pairs[0].tile];
+        for tile in partial.hanging_tiles {
+            if tile.is_terminal() || tile.is_honor() {
+                if !tracker.contains(&tile) { tracker.push(tile) } else { break }
+            } else { break } }
+        if tracker.len() == 13 {
+            let mut yaku: Vec<Yaku> = vec![Yaku::Kokushi];
+            if winning_tile == partial.pairs[0].tile { yaku.push(Yaku::SpecialWait) }
+            return Some(yaku)
+        } else { None }
+    }
+
+
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
 
@@ -162,33 +176,15 @@ pub fn compose_hand(
                         } acc } )
                 } else { 0 } }
         } else { 0 } };
-    
-    // first of all, test for strange hand shapes
-    if closed_tiles.len() == 14 && called_tiles.is_none() {
-        // thirteen orphans
-        let kokushi: Option<Vec<Yaku>> = compose_kokushi(closed_tiles.clone(), winning_tile);
-        if let Some(hand) = kokushi {
-            // a thirteen orphan hand can't be anything else (except special yakuman),
-            // so we'll just return it after seeing if the Vec<Yaku> accepts any of the special yaku.
-            let mut kokushi = hand;
-            kokushi.append_checked(&special_yaku.clone().unwrap_or_default());
-            return Ok(Hand::Kokushi{
-                full_hand: closed_tiles.try_into().unwrap(),
-                winning_tile: winning_tile,
-                yaku: kokushi,
-                han: 13,
-                fu: 20
-            })
-        }
-    }
 
     // now we'll test for normal hand shapes
     // the closed portion of the hand *must* contain the pair, and any melds which haven't been called. simple!
 
-    let called_melds = called_tiles.unwrap_or_default();
+    let called_melds = {if let Some(ref melds) = called_tiles { melds.clone() } else { vec![] }};
 
     if let Some(partials) = compose_tiles(&closed_tiles, false) {
         for partial in partials {
+            // standard hands
             if partial.count_remaining_tiles() == 0 && partial.count_pairs() == 1 && (partial.count_melds() + called_melds.len()) == 4 {
                 let mut melds: Vec<Meld> = {
                     if let Some(vec) = partial.get_melds() { vec
@@ -211,8 +207,9 @@ pub fn compose_hand(
                         }
                     )
                 }
+            // chiitoi
             } else if partial.count_remaining_tiles() == 0 && partial.count_pairs() == 7 && (partial.count_melds() + called_melds.len()) == 0 {
-                let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(partial.pairs.clone().try_into().unwrap(), winning_tile, &special_yaku, win_type)?;
+                let yaku: Vec<Yaku> = yaku::find_yaku_chiitoi(&partial.pairs, winning_tile, &special_yaku, win_type)?;
                 possible_hands.push(
                     Hand::Chiitoi{
                         full_hand: partial.pairs.try_into().unwrap(),
@@ -223,6 +220,22 @@ pub fn compose_hand(
                         fu: 25
                     }
                 );
+            // kokushi
+            // only test for thirteen orphans if it's possible, and if no other hands have been found; otherwise it's a waste of time
+            } else if partial.count_remaining_tiles() == 12 && partial.count_pairs() == 1 && called_tiles == None && possible_hands.len() == 0 {
+                if let Some(hand) = compose_kokushi(partial, winning_tile) {
+                    // a thirteen orphan hand can't be anything else (except special yakuman),
+                    // so we'll just return it after seeing if the Vec<Yaku> accepts any of the special yaku.
+                    let mut kokushi = hand;
+                    kokushi.append_checked(&special_yaku.clone().unwrap_or_default());
+                    return Ok(Hand::Kokushi{
+                        full_hand: closed_tiles.try_into().unwrap(),
+                        winning_tile: winning_tile,
+                        yaku: kokushi,
+                        han: 13,
+                        fu: 20
+                    })
+                }
             }
         }
     }
@@ -266,9 +279,9 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialH
                         partials.push( value.with_pair(temp) ) }
                 } else {
                     partials.push( PartialHand{
-                            hanging_tiles: subs.clone(),
-                            melds: vec![],
-                            pairs: vec![temp] } ) }
+                        hanging_tiles: subs.clone(),
+                        melds: vec![],
+                        pairs: vec![temp] } ) }
         } }
 
         for seq in first_tile.adjacent_all() {
@@ -287,39 +300,28 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialH
                         partials.push( value.with_meld(temp) ) }
                 } else {
                     partials.push( PartialHand{
-                            hanging_tiles: subs.clone(),
-                            melds: vec![temp],
-                            pairs: vec![] } ) }
+                        hanging_tiles: subs.clone(),
+                        melds: vec![temp],
+                        pairs: vec![] } ) }
         } }
+
+        // consider the case where the current tile is hanging
+        // necessary for wait counting and kokushi
+        
+        if let Some(recursion) = compose_tiles(&subset.clone(), open) {
+            for value in recursion {
+                let mut v: Vec<Tile> = vec![first_tile];
+                v.extend(value.hanging_tiles);
+                partials.push( PartialHand{
+                    hanging_tiles: v,
+                    melds: value.melds,
+                    pairs: value.pairs } )
+        } }        
 
         if partials.is_empty() { return None } else {
             return Some(partials)
         }
     }
-}
-
-fn compose_kokushi(
-    tiles: Vec<Tile>,
-    winning_tile: Tile
-) -> Option<Vec<Yaku>> {
-    let mut pair: bool = false;
-    let mut won_on: bool = false;
-    let mut tracker: Vec<Tile> = vec![];
-    for tile in tiles {
-        if tile.is_terminal() || tile.is_honor() {
-            if !tracker.contains(&tile) { tracker.push(tile);
-            } else if !pair {
-                pair = true;
-                if tile == winning_tile { won_on = true; }
-            } else { break }
-        } else { break }
-    }
-    if tracker.len() == 13 && pair {
-        let mut yaku: Vec<Yaku> = vec![Yaku::Kokushi];
-        if won_on { yaku.push(Yaku::SpecialWait) }
-        return Some(yaku)
-    }
-    None
 }
 
 ////////////
@@ -1008,8 +1010,8 @@ mod tests {
     fn test_reading_kokushi(){
         let hand: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(), None,
             Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-
         assert!(matches!(hand, Hand::Kokushi {..}));
+
         assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
             winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], han: 13, fu: 20});
 
