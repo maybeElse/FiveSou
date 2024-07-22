@@ -1,5 +1,5 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string};
-use crate::errors::errors::{ScoringError, ParsingError, CompositionError};
+use crate::errors::errors::{HandError, ParsingError, CompositionError};
 use crate::yaku::{Yaku, WinType, YakuHelpers};
 use crate::yaku;
 use crate::scoring;
@@ -73,6 +73,12 @@ pub struct PartialHand {
     pub pairs: Vec<Pair>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Wait {
+    pub tiles: Vec<Tile>,
+    pub discard: Option<Tile>
+}
+
 // wrapper enum for recursion in compose_tiles()
 #[derive(Debug, PartialEq, Clone)]
 pub enum MeldOrPair {
@@ -112,7 +118,7 @@ pub fn make_melds_from_string(
 
 pub fn make_single_meld(mut tiles: Vec<Tile>, open: bool) -> Option<Meld> {
     if tiles.len() == 3 {
-        if tiles.count_occurrences(tiles[0]) == 3 {
+        if tiles.count_occurrences(&tiles[0]) == 3 {
             return Some(Meld::Triplet{tile: tiles[0], open})
         } else {
             tiles.sort();
@@ -125,18 +131,21 @@ pub fn make_single_meld(mut tiles: Vec<Tile>, open: bool) -> Option<Meld> {
                 }
             }
         }
-    } else if tiles.len() == 4 && tiles.count_occurrences(tiles[0]) == 4 {
+    } else if tiles.len() == 4 && tiles.count_occurrences(&tiles[0]) == 4 {
         return Some(Meld::Kan{tile: tiles[0], open})
     } else { panic!("bad meld length!") }
     return None
 }
 
+// Given tiles and information about the game state, attempts to find the highest value hand possible.
+// Only considers hands with valid yaku.
+// Errors if no completed hands are found.
 pub fn compose_hand(
     closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
     // stuff we need for yaku testing
     winning_tile: Tile, win_type: WinType, seat_wind: Wind, round_wind: Wind,
     special_yaku: Option<Vec<Yaku>>, dora_markers: Option<Vec<Tile>>, ruleset: RiichiRuleset
-) -> Result<Hand, ScoringError> {
+) -> Result<Hand, HandError> {
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<Hand> = vec![];
 
@@ -223,30 +232,32 @@ pub fn compose_hand(
     }
 
     match possible_hands.len() {
-        0 => return Err(ScoringError::NoHands),
+        0 => return Err(HandError::NoHands),
         1 => return Ok(possible_hands[0].clone()),
         _ => {
             let max_han: Option<Hand> = possible_hands.iter().max_by_key(|&p|
                 scoring::calc_base_points(p.get_han(), p.get_fu(), &p.get_yaku(), ruleset).unwrap() ).cloned();
             if let Some(han) = max_han { return Ok(han)
-            } else { return Err(ScoringError::NoHands) }
+            } else { return Err(HandError::NoHands) }
         },
     }
 }
 
-// only for standard hands
-//fn compose_tiles(remaining_tiles: Vec<Tile>, remaining_pairs: bool, remaining_sets: i8, open: bool) -> Option<Vec<Vec<MeldOrPair>>> {
-
+// Given a list of tiles, attempts to compose those tiles into melds and pairs.
+// Returns a list of all possible compositions, including ones in which some tiles could not be assigned to a pair.
+// When reading complete hands, check each PartialHand's count_melds() and count_pairs() to ensure that it is valid.
 fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialHand>> {
     if remaining_tiles.len() <= 1 { return None
     } else {
         let mut partials: Vec<PartialHand> = vec![];
         let subset: Vec<Tile> = remaining_tiles[1..].to_vec();
         let first_tile: Tile = remaining_tiles[0];
+        // TODO: currently, we stop looking for melds if remaining_tiles[0] is not part of a valid meld.
+        // probably change this behavior to make wait reading work properly.
 
         if subset.contains(&first_tile){
             // for readability of the if/elseif, we'll count dupes based on remaining_tiles instead of subset
-            let dupe_count = remaining_tiles.count_occurrences(first_tile);
+            let dupe_count = remaining_tiles.count_occurrences(&first_tile);
 
             if dupe_count >= 2 {
                 let temp: Pair = Pair{tile: first_tile};
@@ -262,13 +273,18 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialH
                             hanging_tiles: subs.clone(),
                             melds: vec![],
                             pairs: vec![temp] } ) }
-            }
+        } }
 
-            if dupe_count >= 3 {
-                let temp: Meld = Meld::Triplet{tile: first_tile, open};
+        for seq in first_tile.adjacent_all() {
+            if (subset.contains(&seq[0]) && subset.contains(&seq[1]) && seq[0] != seq[1])
+                || (seq[0] == seq[1] && subset.contains(&first_tile) && subset.count_occurrences(&first_tile) >= 2) {
                 let mut subs: Vec<Tile> = subset.clone();
+                let temp: Meld = {
+                    if seq[0] == seq[1] { Meld::Triplet{tile: first_tile, open: open}
+                    } else { Meld::Sequence{tiles: [first_tile, seq[0], seq[1]], open: open} } };
 
-                subs.remove_x_occurrences(first_tile, 2);
+                subs.remove(subs.iter().position(|x| *x == seq[0])?);
+                subs.remove(subs.iter().position(|x| *x == seq[1])?);
 
                 if let Some(recursions) = compose_tiles(&subs, open) {
                     for value in recursions {
@@ -278,31 +294,7 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool) -> Option<Vec<PartialH
                             hanging_tiles: subs.clone(),
                             melds: vec![temp],
                             pairs: vec![] } ) }
-            }
-        }
-
-        if first_tile.is_numbered() {
-            let possible_sequences: Vec<[Tile; 2]> = first_tile.adjacent_all();
-
-            for seq in possible_sequences {
-                if subset.contains(&seq[0]) && subset.contains(&seq[1]) {
-                    let mut subs: Vec<Tile> = subset.clone();
-                    let temp: Meld = Meld::Sequence{tiles: [remaining_tiles[0], seq[0], seq[1]], open: open};
-
-                    subs.remove(subs.iter().position(|x| *x == seq[0])?);
-                    subs.remove(subs.iter().position(|x| *x == seq[1])?);
-
-                    if let Some(recursions) = compose_tiles(&subs, open) {
-                        for value in recursions {
-                            partials.push( value.with_meld(temp) ) }
-                    } else {
-                        partials.push( PartialHand{
-                                hanging_tiles: subs.clone(),
-                                melds: vec![temp],
-                                pairs: vec![] } ) }
-                }
-            }
-        }
+        } }
 
         if partials.is_empty() { return None } else {
             return Some(partials)
@@ -702,7 +694,7 @@ pub trait MeldHelpers {
     fn is_closed(&self) -> bool {true}
     fn contains_tile(&self, tile: &Tile) -> bool;
     fn get_suit(&self) -> Option<Suit>;
-    fn get_tile(&self) -> Result<Tile, ScoringError>;
+    fn get_tile(&self) -> Result<Tile, HandError>;
     fn set_open(&self) {} // marks a meld as open
 }
 
@@ -767,10 +759,10 @@ impl MeldHelpers for Meld {
         } }
         None
     }
-    fn get_tile(&self) -> Result<Tile, ScoringError> {
+    fn get_tile(&self) -> Result<Tile, HandError> {
         match self {
             Meld::Kan {tile, ..} | Meld::Triplet {tile, ..} => Ok(*tile),
-            _ => Err(ScoringError::WrongMeldType)
+            _ => Err(HandError::WrongMeldType)
     } }
 }
 
@@ -803,7 +795,7 @@ impl MeldHelpers for Pair {
         if let Tile::Number {suit, ..} = self.tile { return Some(suit) }
         else { None }
     }
-    fn get_tile(&self) -> Result<Tile, ScoringError> {
+    fn get_tile(&self) -> Result<Tile, HandError> {
         Ok(self.tile)
     }
 }
@@ -838,13 +830,13 @@ impl SequenceHelpers for Meld {
 }
 
 pub trait VecTileHelpers {
-    fn count_occurrences(&self, tile: Tile) -> i8;
+    fn count_occurrences(&self, tile: &Tile) -> i8;
     fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> ();
 }
 
 impl VecTileHelpers for Vec<Tile> {
-    fn count_occurrences(&self, tile: Tile) -> i8 {
-        self.iter().fold(0, |acc, value| {if tile == *value { acc + 1 } else { acc }})
+    fn count_occurrences(&self, tile: &Tile) -> i8 {
+        self.iter().fold(0, |acc, value| {if tile == value { acc + 1 } else { acc }})
     }
     fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> () {
         for i in 0..count {
@@ -917,6 +909,7 @@ pub trait PartialHelpers {
     fn get_remaining_tiles(&self) -> Option<Vec<Tile>>;
     fn count_remaining_tiles(&self) -> usize;
     fn is_complete(&self) -> bool;
+    fn is_tenpai(&self) -> bool;
     fn with_pair(&self, pair: Pair) -> Self where Self: Sized;
     fn with_meld(&self, meld: Meld) -> Self where Self: Sized;
 }
@@ -936,6 +929,9 @@ impl PartialHelpers for PartialHand {
         if self.hanging_tiles.len() == 0 { 
             if (self.melds.len() == 4 && self.pairs.len() == 1) || (self.melds.len() == 0 && self.pairs.len() == 7) { return true }
         } false }
+    fn is_tenpai(&self) -> bool {
+        false
+    }
     fn with_pair(&self, pair: Pair) -> PartialHand {
         let mut pairs = [self.pairs.clone(), vec![pair]].concat();
         pairs.sort();
