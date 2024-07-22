@@ -363,21 +363,23 @@ pub fn find_yaku_standard(
 // chiitoi is only eligible for a few yaku:
 // tanyao, honro, honitsu, chinitsu, and daichiishin
 pub fn find_yaku_chiitoi(
-    hand: [Pair; 7], winning_tile: Tile, special_yaku: &Option<Vec<Yaku>>, win_type: WinType,
+    hand: &Vec<Pair>, winning_tile: Tile, special_yaku: &Option<Vec<Yaku>>, win_type: WinType,
 ) -> Result<Vec<Yaku>, HandError> {
-    let mut yaku: Vec<Yaku> = special_yaku.clone().unwrap_or_default();
-    yaku.push_checked(Yaku::Chiitoi);
-    if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }
-    if !hand.has_any_honor() {
-        yaku.push_checked(Yaku::Tanyao);
-        if hand.count_suits() == 1 { yaku.push_checked(Yaku::Chinitsu) }
-    } else if !hand.has_any_simple() {
-        yaku.push_checked(Yaku::Honro);
-        if !hand.has_any_terminal() { yaku.push_checked(Yaku::Daichiishin) }
-    } else {
-        if hand.count_suits() == 1 { yaku.push_checked(Yaku::Honitsu) }
-    }
-    Ok(yaku)
+    if hand.len() == 7 {
+        let mut yaku: Vec<Yaku> = {if let Some(sp_yaku) = special_yaku { sp_yaku.clone() } else { vec![] } };
+        yaku.push_checked(Yaku::Chiitoi);
+        if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }
+        if !hand.has_any_honor() {
+            yaku.push_checked(Yaku::Tanyao);
+            if hand.count_suits() == 1 { yaku.push_checked(Yaku::Chinitsu) }
+        } else if !hand.has_any_simple() {
+            yaku.push_checked(Yaku::Honro);
+            if !hand.has_any_terminal() { yaku.push_checked(Yaku::Daichiishin) }
+        } else {
+            if hand.count_suits() == 1 { yaku.push_checked(Yaku::Honitsu) }
+        }
+        Ok(yaku)
+    } else { Err(HandError::WrongPipeline) }
 }
 
 ///////////
