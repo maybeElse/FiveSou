@@ -1,5 +1,3 @@
-
-use fivesou::*;
 use fivesou::scoring::Payment;
 
 #[test]
