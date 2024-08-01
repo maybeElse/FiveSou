@@ -1,5 +1,5 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers};
-use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecTileHelpers, VecMeldHelpers};
+use crate::hand::{Hand, FullHand, HandHelpers, Meld, MeldHelpers, HandTools, Pair, SequenceHelpers, VecHelpers};
 use crate::errors::errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use core::fmt;

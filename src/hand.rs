@@ -252,6 +252,74 @@ pub fn compose_hand(
     }
 }
 
+// Given the tiles currently in the hand, checks if the hand is in tenpai and then returns waits.
+// Finds yaku which might apply to different waits.
+// Errors if the hand is already completed, or is not in tenpai.
+pub fn compose_waits(
+    closed_tiles: Vec<Tile>, called_tiles: Option<Vec<Meld>>,
+    seat_wind: Wind, round_wind: Wind, ruleset: RiichiRuleset,
+    max_hanging_tiles: i8
+) -> Result<Vec<Wait>, HandError> {
+    fn get_waits(tile_one: Tile, tile_two: Tile) -> Option<Vec<Tile>> {
+        if tile_one.get_suit() == tile_two.get_suit() {
+            let mut waits: Vec<Tile> = vec![];
+            for adj in tile_one.adjacent_all() {
+                if let Some(index) = adj.iter().position(|&x| x == tile_two) {
+                    waits.push( 
+                        adj[(index + 1) % 2]
+            ) } }
+            Some(waits)
+        } else if tile_one == tile_two { Some(vec![tile_one])
+        } else { None }
+    }
+
+    let called_melds = called_tiles.unwrap_or_default();
+    let mut possible_waits: Vec<Wait> = vec![];
+
+    if let Some(partials) = compose_tiles(&closed_tiles, false, Some(max_hanging_tiles), true) {
+        for partial in partials {
+            match partial.count_remaining_tiles() {
+                0 | 1 if partial.count_pairs() == 2 && partial.count_melds() == 3 => { // dual pair wait for a standard hand
+                    // add a single wait depending on the discard of a hanging tile, if present
+                    possible_waits.push(
+                        Wait {
+                            tiles: vec![partial.pairs[0].tile, partial.pairs[1].tile],
+                            discard: {if partial.count_remaining_tiles() == 1 { Some(partial.hanging_tiles[0]) } else { None }}
+                } ) },
+                1 | 2 if (partial.count_pairs() == 0 && (partial.count_melds() + called_melds.len()) == 4) // pair wait for a standard hand
+                    || (partial.count_pairs() == 6 && (partial.count_melds() + called_melds.len()) == 0) => { // pair wait for chiitoi
+                    // add one wait for each remaining tile; if there's more than one, note that the other one needs to be discarded
+                    for t in 0..partial.count_remaining_tiles() {
+                        possible_waits.push(
+                            Wait {
+                                tiles: vec![partial.hanging_tiles[t]],
+                                discard: {if partial.count_remaining_tiles() == 2 { Some(partial.hanging_tiles[(t + 1) % 2]) } else { None }}
+                } ) } },
+                2 | 3 if partial.count_pairs() == 1 && (partial.count_melds() + called_melds.len()) == 3 => { // meld wait
+                    // add one wait for each valid set of two tiles; if there are 3 tiles, note that the third needs to be discarded for that wait
+                    for t in 0..partial.count_remaining_tiles() {
+                        if let Some(tiles) = get_waits(partial.hanging_tiles[t], partial.hanging_tiles[(t + 1) % partial.count_remaining_tiles()]) {
+                            possible_waits.push(
+                                Wait {
+                                    tiles: tiles,
+                                    discard: {if partial.count_remaining_tiles() == 3 { Some(partial.hanging_tiles[(t + 2) % 3])} else { None }}
+                } ) } } },
+                11..=14 if possible_waits.len() == 0 => { // might be a kokushi wait
+                    // ie: in a 13-tile hand, there are 13 unique terminal/honor tiles, *or* there are 11 uniques and a pair
+                    // or: in a 14-tile hand, there are 13 unique terminal/honor tiles and a simple tile, *or* there are 10 uniques and two pairs
+                    
+                },
+                _ => () // not a tenpai hand.
+            }
+
+            if partial.count_remaining_tiles() == 0 && partial.count_pairs() == 1 && (partial.count_melds() + called_melds.len()) == 4 {
+
+            }
+        }
+    }
+    Err(HandError::Unimplemented)
+}
+
 // Given a list of tiles, attempts to compose those tiles into melds and pairs.
 // Returns a list of all possible compositions, including ones in which some tiles could not be assigned to a pair.
 // When reading complete hands, check each PartialHand's count_melds() and count_pairs() to ensure that it is valid.
@@ -811,12 +879,13 @@ impl SequenceHelpers for Meld {
     }
 }
 
-pub trait VecTileHelpers {
-    fn count_occurrences(&self, tile: &Tile) -> i8;
-    fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> ();
+pub trait VecHelpers {
+    fn count_occurrences(&self, tile: &Tile) -> i8 {panic!()}
+    fn remove_x_occurrences(&mut self, tile: Tile, count: i8) -> () {panic!()}
+    fn count_suits(&self) -> usize {panic!()}
 }
 
-impl VecTileHelpers for Vec<Tile> {
+impl VecHelpers for Vec<Tile> {
     fn count_occurrences(&self, tile: &Tile) -> i8 {
         self.iter().fold(0, |acc, value| {if tile == value { acc + 1 } else { acc }})
     }
@@ -827,11 +896,7 @@ impl VecTileHelpers for Vec<Tile> {
     }
 }
 
-pub trait VecMeldHelpers {
-    fn count_suits(&self) -> usize;
-}
-
-impl VecMeldHelpers for Vec<Meld> {
+impl VecHelpers for Vec<Meld> {
     fn count_suits(&self) -> usize {
         let mut suits: Vec<Suit> = vec![];
         for meld in self { if !suits.contains(&meld.get_suit().unwrap()) { suits.push(meld.get_suit().unwrap()) } }
@@ -839,7 +904,7 @@ impl VecMeldHelpers for Vec<Meld> {
     }
 }
 
-impl VecMeldHelpers for [Meld] {
+impl VecHelpers for [Meld] {
     fn count_suits(&self) -> usize {
         let mut suits: Vec<Suit> = vec![];
         for meld in self { if !suits.contains(&meld.get_suit().unwrap()) { suits.push(meld.get_suit().unwrap()) } }
