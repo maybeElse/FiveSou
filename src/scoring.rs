@@ -181,27 +181,27 @@ mod tests {
 
     #[test]
     fn base_point_calc(){
-        assert_eq!(calc_base_points(1, 50, &vec![], RiichiRuleset::Default).unwrap(), 400);
-        assert_eq!(calc_base_points(2, 40, &vec![], RiichiRuleset::Default).unwrap(), 640);
-        assert_eq!(calc_base_points(3, 70, &vec![], RiichiRuleset::Default).unwrap(), 2000);
-        assert_eq!(calc_base_points(4, 40, &vec![], RiichiRuleset::Default).unwrap(), 2000);
-        assert_eq!(calc_base_points(7, 30, &vec![], RiichiRuleset::Default).unwrap(), 3000);
-        assert_eq!(calc_base_points(9, 50, &vec![], RiichiRuleset::Default).unwrap(), 4000);
-        assert_eq!(calc_base_points(11, 40, &vec![], RiichiRuleset::Default).unwrap(), 6000);
-        assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::Default).unwrap(), 6000);
-        assert_eq!(calc_base_points(13, 50, &vec![], RiichiRuleset::MajSoul).unwrap(), 8000);
+        assert_eq!(calc_base_points(1, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), 400);
+        assert_eq!(calc_base_points(2, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), 640);
+        assert_eq!(calc_base_points(3, 70, &Vec::new(), RiichiRuleset::Default).unwrap(), 2000);
+        assert_eq!(calc_base_points(4, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), 2000);
+        assert_eq!(calc_base_points(7, 30, &Vec::new(), RiichiRuleset::Default).unwrap(), 3000);
+        assert_eq!(calc_base_points(9, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), 4000);
+        assert_eq!(calc_base_points(11, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), 6000);
+        assert_eq!(calc_base_points(13, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), 6000);
+        assert_eq!(calc_base_points(13, 50, &Vec::new(), RiichiRuleset::MajSoul).unwrap(), 8000);
         
-        assert_eq!(calc_base_points(0, 50, &vec![], RiichiRuleset::Default), Err(HandError::NoYaku));
-        assert_eq!(calc_base_points(0, 10, &vec![], RiichiRuleset::Default), Err(HandError::ValueError(ValueError::BadInput)));
+        assert_eq!(calc_base_points(0, 50, &Vec::new(), RiichiRuleset::Default), Err(HandError::NoYaku));
+        assert_eq!(calc_base_points(0, 10, &Vec::new(), RiichiRuleset::Default), Err(HandError::ValueError(ValueError::BadInput)));
     }
 
     #[test]
     fn bp_and_split_calc(){
-        assert_eq!(calc_player_split(calc_base_points(4, 40, &vec![], RiichiRuleset::Default).unwrap(), false, WinType::Tsumo, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(4, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), false, WinType::Tsumo, 0).unwrap(),
                     Payment::Tsumo{dealer: 4000, non_dealer: 2000});
-        assert_eq!(calc_player_split(calc_base_points(2, 50, &vec![], RiichiRuleset::Default).unwrap(), true, WinType::Tsumo, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(2, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), true, WinType::Tsumo, 0).unwrap(),
                     Payment::DealerTsumo(1600));
-        assert_eq!(calc_player_split(calc_base_points(3, 70, &vec![], RiichiRuleset::Default).unwrap(), true, WinType::Ron, 0).unwrap(),
+        assert_eq!(calc_player_split(calc_base_points(3, 70, &Vec::new(), RiichiRuleset::Default).unwrap(), true, WinType::Ron, 0).unwrap(),
                     Payment::Ron(12000));
     }
 }

@@ -32,7 +32,7 @@ pub enum Wind {East, South, West, North,}
 ///////////////
 
 pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, HandError> {
-    let mut tiles: Vec<Tile> = vec![];
+    let mut tiles: Vec<Tile> = Vec::new();
     let input: Vec<&str> = str.split(',').collect();
     for tile in input {
         tiles.push(Tile::from_string(tile)?);

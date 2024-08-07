@@ -104,7 +104,7 @@ impl YakuHelpers for Vec<Yaku> {
 
     fn from_string(special_yaku: &str) -> Result<Self, ParsingError> {
         let input: Vec<&str> = special_yaku.split(',').collect::<Vec<&str>>();
-        let mut result: Vec<Yaku> = vec![];
+        let mut result: Vec<Yaku> = Vec::new();
         for yaku in input {
             match yaku.to_lowercase().as_str() {
                 "riichi" => result.push_checked(Yaku::Riichi),
@@ -366,7 +366,7 @@ pub fn find_yaku_chiitoi(
     hand: &Vec<Pair>, winning_tile: Tile, special_yaku: &Option<Vec<Yaku>>, win_type: WinType,
 ) -> Result<Vec<Yaku>, HandError> {
     if hand.len() == 7 {
-        let mut yaku: Vec<Yaku> = {if let Some(sp_yaku) = special_yaku { sp_yaku.clone() } else { vec![] } };
+        let mut yaku: Vec<Yaku> = {if let Some(sp_yaku) = special_yaku { sp_yaku.clone() } else { Vec::new() } };
         yaku.push_checked(Yaku::Chiitoi);
         if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }
         if !hand.has_any_honor() {

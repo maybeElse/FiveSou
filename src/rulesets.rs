@@ -84,11 +84,11 @@ mod tests {
 
     #[test]
     fn test_kiriage_mangan() {
-        assert_eq!(calc_base_points(4,30, &vec![], RiichiRuleset::Default), Ok(1920));
-        assert_eq!(calc_base_points(4,30, &vec![], RiichiRuleset::MajSoul), Ok(2000));
+        assert_eq!(calc_base_points(4,30, &Vec::new(), RiichiRuleset::Default), Ok(1920));
+        assert_eq!(calc_base_points(4,30, &Vec::new(), RiichiRuleset::MajSoul), Ok(2000));
 
-        assert_eq!(calc_base_points(3,60, &vec![], RiichiRuleset::Default), Ok(1920));
-        assert_eq!(calc_base_points(3,60, &vec![], RiichiRuleset::MajSoul), Ok(2000));
+        assert_eq!(calc_base_points(3,60, &Vec::new(), RiichiRuleset::Default), Ok(1920));
+        assert_eq!(calc_base_points(3,60, &Vec::new(), RiichiRuleset::MajSoul), Ok(2000));
 
         // testing with full hands isn't really necessary, but it can't hurt.
         // 4han30fu: junchan pinfu
