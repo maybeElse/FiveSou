@@ -1,12 +1,13 @@
 use crate::errors::errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use core::fmt;
+use core::cmp::Ordering;
 
 ///////////////////////
 // structs and enums //
 ///////////////////////
 
-#[derive(Debug, Clone, Copy, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy)]
 pub enum Tile {
     Number{
         suit: Suit,
@@ -32,11 +33,11 @@ pub enum Wind {East, South, West, North,}
 
 pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, HandError> {
     let mut tiles: Vec<Tile> = vec![];
-    let mut input: Vec<&str> = str.split(',').collect();
-    input.sort();
+    let input: Vec<&str> = str.split(',').collect();
     for tile in input {
         tiles.push(Tile::from_string(tile)?);
     }
+    tiles.sort();
     Ok(tiles)   
 }
 
@@ -171,7 +172,7 @@ impl TileHelpers for Tile {
         match self {Tile::Number {suit, number, ..} => {
             match number {
                 1 | 2 => None,
-                _ => Some(Self::adjacent(*suit, *number, -1, -2))
+                _ => Some(Self::adjacent(*suit, *number, -2, -1))
             }},
             _ => None,}
     }
@@ -234,16 +235,43 @@ impl PartialEq for Tile {
                 match other {
                     Tile::Wind(val2) => val1 == val2,
                     _ => false,
-                }},
+                } },
             Tile::Dragon(val1) => {
                 if let Tile::Dragon(val2) = other { val1 == val2 } else { false }
                 },
-            Tile::Number {suit, number, red} => {
-                let s1 = suit;
-                let n1 = number;
+            Tile::Number {suit: s1, number: n1, ..} => {
                 if let Tile::Number {suit, number, ..} = other { s1 == suit && n1 == number } else { false }
             }
         }
+    }
+}
+impl Eq for Tile {}
+
+impl Ord for Tile {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            Tile::Wind(val1) => {
+                match other {
+                    Tile::Wind(val2) => val1.cmp(&val2),
+                    _ => Ordering::Greater } },
+            Tile::Dragon(val1) => {
+                match other {
+                    Tile::Dragon(val2) => val1.cmp(&val2),
+                    Tile::Wind(_) => Ordering::Less,
+                    _ => Ordering::Greater } },
+            Tile::Number {suit: s1, number: n1, ..} => {
+                if let Tile::Number {suit, number, ..} = other { 
+                    if s1 == suit { n1.cmp(&number) }
+                    else { s1.cmp(&suit) }
+                } else {Ordering::Less }
+            }
+        }
+    }
+}
+
+impl PartialOrd for Tile {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -303,15 +331,15 @@ mod tests {
                 Tile::Number{suit: Suit::Man, number: 2, red: false},
                 Tile::Number{suit: Suit::Man, number: 3, red: false}]);
         assert_eq!(make_tiles_from_string("we,dw,s2").unwrap(), 
-            vec![Tile::Dragon(Dragon::White),
-                Tile::Number{suit: Suit::Sou, number: 2, red: false},
+            vec![Tile::Number{suit: Suit::Sou, number: 2, red: false},
+                Tile::Dragon(Dragon::White),
                 Tile::Wind(Wind::East),]);
         assert_eq!(make_tiles_from_string("s5,s5r,s5").unwrap(), 
             vec![Tile::Number{suit: Suit::Sou, number: 5, red: false},
                 Tile::Number{suit: Suit::Sou, number: 5, red: false},
                 Tile::Number{suit: Suit::Sou, number: 5, red: true}]);
         assert_eq!(make_tiles_from_string("p1,p3,p2,p5r,p4,p6,p7,p8,p9,we,we,we,dr").unwrap(),
-            vec![Tile::Dragon(Dragon::Red),
+            vec![
                 Tile::Number{suit: Suit::Pin, number: 1, red: false},
                 Tile::Number{suit: Suit::Pin, number: 2, red: false},
                 Tile::Number{suit: Suit::Pin, number: 3, red: false},
@@ -321,10 +349,18 @@ mod tests {
                 Tile::Number{suit: Suit::Pin, number: 7, red: false},
                 Tile::Number{suit: Suit::Pin, number: 8, red: false},
                 Tile::Number{suit: Suit::Pin, number: 9, red: false},
+                Tile::Dragon(Dragon::Red),
                 Tile::Wind(Wind::East),
                 Tile::Wind(Wind::East),
                 Tile::Wind(Wind::East),
             ]);
+    }
+
+    #[test]
+    fn tile_equality(){
+        // making sure that reddness isn't included in equality ...
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: true}, Tile::Number{suit: Suit::Sou, number: 5, red: false});
+        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: true} > Tile::Number{suit: Suit::Sou, number: 5, red: false}, false);
     }
 
     #[test]
@@ -350,18 +386,20 @@ mod tests {
             vec![[Tile::from_string("s5").unwrap(), Tile::from_string("s5").unwrap()],
                  [Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()],
                  [Tile::from_string("s4").unwrap(), Tile::from_string("s6").unwrap()],
-                 [Tile::from_string("s4").unwrap(), Tile::from_string("s3").unwrap()]
+                 [Tile::from_string("s3").unwrap(), Tile::from_string("s4").unwrap()]
             ]);
         assert_eq!(Tile::Number{suit: Suit::Sou, number: 8, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s8").unwrap(), Tile::from_string("s8").unwrap()],
                  [Tile::from_string("s7").unwrap(), Tile::from_string("s9").unwrap()],
-                 [Tile::from_string("s7").unwrap(), Tile::from_string("s6").unwrap()]
+                 [Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()]
             ]);
         assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.adjacent_all(), 
             vec![[Tile::from_string("s9").unwrap(), Tile::from_string("s9").unwrap()],
-                 [Tile::from_string("s8").unwrap(), Tile::from_string("s7").unwrap()]
+                 [Tile::from_string("s7").unwrap(), Tile::from_string("s8").unwrap()]
             ]);
         assert_eq!(Tile::Wind(Wind::East).adjacent_all(),
             vec![[Tile::from_string("we").unwrap(), Tile::from_string("we").unwrap()]]);
+        assert_eq!(Tile::Dragon(Dragon::Red).adjacent_all(),
+            vec![[Tile::from_string("dr").unwrap(), Tile::from_string("dr").unwrap()]]);
     }
 }
