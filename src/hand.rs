@@ -39,10 +39,10 @@ pub enum Hand {
     },
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct FullHand {
     pub melds: [Meld; 4],
-    pub pair: Pair
+    pub pair: Pair,
 }
 
 #[derive(Debug, Eq, PartialOrd, Ord, Copy, Clone)]
@@ -195,18 +195,18 @@ pub fn compose_hand(
                 let pair: Pair = partial.get_pairs().expect("no pair found")[0];
                 for meld in &called_melds { melds.push(*meld) }
                 melds.sort();
-                let hand: FullHand = FullHand{melds: melds.try_into().unwrap(), pair: pair};
+                let hand: FullHand = FullHand {melds: melds.try_into().unwrap(), pair: pair};
                 let is_open: bool = called_melds.iter().any( |&x| !x.is_closed() );
-                if let Ok(yaku) = yaku::find_yaku_standard(hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type, ruleset) {
+                if let Ok(yaku) = yaku::find_yaku_standard(&hand, winning_tile, &special_yaku, is_open, seat_wind, round_wind, win_type, ruleset) {
                     possible_hands.push(
                         Hand::Standard {
-                            full_hand: hand,
                             winning_tile: winning_tile,
                             open: is_open,
-                            yaku: yaku.clone(),
                             dora: dora,
                             han: scoring::count_han(&yaku, dora, !is_open, ruleset),
-                            fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, win_type, round_wind, seat_wind, ruleset)?
+                            fu: scoring::count_fu(&hand, &winning_tile, is_open, &yaku, win_type, round_wind, seat_wind, ruleset)?,
+                            full_hand: hand,
+                            yaku: yaku,
                         }
                     )
                 }
@@ -230,7 +230,7 @@ pub fn compose_hand(
                     // a thirteen orphan hand can't be anything else (except special yakuman),
                     // so we'll just return it after seeing if the Vec<Yaku> accepts any of the special yaku.
                     let mut kokushi = hand;
-                    kokushi.append_checked(&special_yaku.clone().unwrap_or_default());
+                    kokushi.append_checked(&special_yaku.unwrap_or_default());
                     return Ok(Hand::Kokushi{
                         full_hand: closed_tiles.try_into().unwrap(),
                         winning_tile: winning_tile,
@@ -245,7 +245,7 @@ pub fn compose_hand(
 
     match possible_hands.len() {
         0 => return Err(HandError::NoHands),
-        1 => return Ok(possible_hands[0].clone()),
+        1 => return Ok(possible_hands.remove(0)),
         _ => {
             let max_han: Option<Hand> = possible_hands.iter().max_by_key(|&p|
                 scoring::calc_base_points(p.get_han(), p.get_fu(), &p.get_yaku(), ruleset).unwrap() ).cloned();
@@ -562,7 +562,8 @@ impl HandHelpers for FullHand {
                 if !suits.contains(&suit) {
                     suits.push(suit);
                     if suits.len() == 3 { break } } } }
-        suits
+
+        return suits
     }
     fn count_sequences(&self) -> i8 {
         self.only_sequences().len() as i8
@@ -616,7 +617,7 @@ impl HandHelpers for FullHand {
     fn has_any_honor(&self) -> bool {
         if self.pair.has_honor() { return true }
         for meld in &self.melds {
-            if meld.has_honor() { return true } }
+            if meld.has_honor() { return true} }
         false
     }
     fn has_any_terminal(&self) -> bool {

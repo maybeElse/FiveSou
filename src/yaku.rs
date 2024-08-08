@@ -162,7 +162,7 @@ impl YakuHelpers for Vec<Yaku> {
 /////////////////////////////
 
 pub fn find_yaku_standard(
-    hand: FullHand,
+    hand: &FullHand,
     winning_tile: Tile,
     special_yaku: &Option<Vec<Yaku>>,
     open: bool,
@@ -191,7 +191,7 @@ pub fn find_yaku_standard(
         for i in 0..melds.len() { if melds[i+1..].contains(&melds[i]) { return true } } return false }
 
     // check if the narrow requirements for a sananko are satisfied
-    fn check_sananko(hand: FullHand, winning_tile: Tile, win_type: WinType) -> bool {
+    fn check_sananko(hand: &FullHand, winning_tile: Tile, win_type: WinType) -> bool {
         match hand.without_sequences().iter().fold(0, |acc, meld| { if meld.is_closed() { acc + 1 } else { acc } } ) {
             4 => return true,
             3 => {
@@ -212,8 +212,8 @@ pub fn find_yaku_standard(
 
     // TODO: refactor
     // checks if the hand shape matches churenpoto's 1-1-1-2-3-4-5-6-7-8-9-9-9
-    fn check_churenpoto(hand: FullHand) -> bool {
-        fn tiles_as_array(hand: FullHand) -> [i8; 9] {
+    fn check_churenpoto(hand: &FullHand) -> bool {
+        fn tiles_as_array(hand: &FullHand) -> [i8; 9] {
             let mut arr: [i8; 9] = [0; 9];
             arr[(hand.pair.tile.get_number().unwrap() - 1) as usize] = 2;
             for meld in hand.melds {
