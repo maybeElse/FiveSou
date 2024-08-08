@@ -642,8 +642,7 @@ impl HandHelpers for FullHand {
         vec
     }
     fn as_tiles(&self) -> Vec<Tile> {
-        let mut vec: Vec<Tile> = Vec::new();
-        vec.push(self.pair.tile); vec.push(self.pair.tile);
+        let mut vec: Vec<Tile> = vec![self.pair.tile, self.pair.tile];
         for meld in self.melds {
             match meld {
                 Meld::Sequence {tiles, ..} => {
@@ -656,8 +655,7 @@ impl HandHelpers for FullHand {
         vec
     }
     fn only_closed(&self) -> Vec<MeldOrPair> {
-        let mut vec: Vec<MeldOrPair> = Vec::new();
-        vec.push(MeldOrPair::Pair(self.pair));
+        let mut vec: Vec<MeldOrPair> = vec![MeldOrPair::Pair(self.pair)];
         for meld in self.melds {
             match meld {
                 Meld::Triplet {open, ..} | Meld::Kan {open, ..} | Meld::Sequence {open, ..}
@@ -666,12 +664,8 @@ impl HandHelpers for FullHand {
         vec
     }
     fn only_open(&self) -> Vec<Meld> {
-        let mut vec: Vec<Meld> = Vec::new();
-        for meld in self.melds {
-            match meld {
-                Meld::Triplet {open, ..} | Meld::Kan {open, ..} | Meld::Sequence {open, ..}
-                    => if open { vec.push(meld)},
-        } }
+        let mut vec: Vec<Meld> = self.melds.clone().to_vec();
+        vec.retain(|x| !x.is_closed() );
         vec
     }
     fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
@@ -692,7 +686,9 @@ impl HandHelpers for [Pair] {
         let mut suits: Vec<Suit> = Vec::new();
         for pair in self { 
             if let Tile::Number {suit,..} = pair.tile { 
-                if !suits.contains(&suit) { suits.push(suit); } } }
+                if !suits.contains(&suit) {
+                    suits.push(suit);
+                    if suits.len() == 3 { break } } } }
         suits
     }
     fn count_dragons(&self) -> i8 {
