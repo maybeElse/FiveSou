@@ -7,7 +7,7 @@ use core::cmp::Ordering;
 // structs and enums //
 ///////////////////////
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub enum Tile {
     Number{
         suit: Suit,
@@ -18,13 +18,13 @@ pub enum Tile {
     Wind(Wind)
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 pub enum Suit {Man, Sou, Pin,}
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 pub enum Dragon {White, Green, Red,}
 
-#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, PartialOrd, Ord, Hash)]
 pub enum Wind {East, South, West, North,}
 
 ///////////////

@@ -45,7 +45,7 @@ pub struct FullHand {
     pub pair: Pair,
 }
 
-#[derive(Debug, Eq, PartialOrd, Ord, Copy, Clone)]
+#[derive(Debug, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 pub enum Meld {
     Triplet{
         open: bool,
@@ -61,12 +61,12 @@ pub enum Meld {
     },
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
 pub struct Pair {
     pub tile: Tile
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PartialHand {
     pub hanging_tiles: Vec<Tile>,
     pub melds: Vec<Meld>,
@@ -76,7 +76,7 @@ pub struct PartialHand {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Wait {
     pub tiles: Vec<Tile>,
-    pub discard: Option<Tile>
+    pub discard: Option<Tile>,
 }
 
 // wrapper enum for recursion in compose_tiles()
@@ -350,34 +350,35 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option
         } }
         
         if len >= 3 {
-            for seq in first_tile.adjacent_all() {
-                let mut subs: Vec<Tile> = subset.clone();
-                let mut temp: Option<Meld> = None;
+            for seq in [first_tile.adjacent_up(), Some(first_tile.adjacent_aside())] {
+                if let Some(seq) = seq {
+                    let mut subs: Vec<Tile> = subset.clone();
+                    let mut temp: Option<Meld> = None;
 
-                if seq[0] != seq[1] {
-                    if let (Ok(index1), Ok(index2)) = (subset.binary_search(&seq[0]), subset.binary_search(&seq[1])) {
-                        temp = Some(Meld::Sequence{tiles: [first_tile, subs[index1], subs[index2]], open: open});
+                    if seq[0] != seq[1] {
+                        if let (Ok(index1), Ok(index2)) = (subset.binary_search(&seq[0]), subset.binary_search(&seq[1])) {
+                            temp = Some(Meld::Sequence{tiles: [first_tile, subs[index1], subs[index2]], open: open});
 
-                        // index1 should be strictly less than index2, but just in case ...
-                        subs.remove(std::cmp::max(index1,index2));
-                        subs.remove(std::cmp::min(index1,index2));
-                } } else if subset[0] == first_tile && subset[1] == first_tile {
-                    temp = Some(Meld::Triplet{tile: first_tile, open: open});
+                            // index1 should be strictly less than index2, but just in case ...
+                            subs.remove(std::cmp::max(index1,index2));
+                            subs.remove(std::cmp::min(index1,index2));
+                    } } else if subset[0] == first_tile && subset[1] == first_tile {
+                        temp = Some(Meld::Triplet{tile: first_tile, open: open});
 
-                    // slice away the first two values.
-                    subs = subs[2..].to_vec();
-                } 
+                        // slice away the first two values.
+                        subs = subs[2..].to_vec();
+                    } 
 
-                if let Some(found) = temp {
-                    if let Some(recursions) = compose_tiles(&subs, open, consider_waits, false) {
-                        for value in recursions {
-                            partials.push( value.with_meld(found) ) }
-                    } else if consider_waits.is_some() || subs.len() == 0 {
-                        partials.push( PartialHand{
-                            hanging_tiles: subs.clone(),
-                            melds: vec![found],
-                            pairs: Vec::new() } ) }
-        } } }
+                    if let Some(found) = temp {
+                        if let Some(recursions) = compose_tiles(&subs, open, consider_waits, false) {
+                            for value in recursions {
+                                partials.push( value.with_meld(found) ) }
+                        } else if consider_waits.is_some() || subs.len() == 0 {
+                            partials.push( PartialHand{
+                                hanging_tiles: subs.clone(),
+                                melds: vec![found],
+                                pairs: Vec::new() } ) }
+        } } } }
 
         // consider the case where the current tile is hanging
         // necessary for wait counting and kokushi
@@ -1011,6 +1012,7 @@ impl PartialHelpers for PartialHand {
 mod tests {
     use super::*;
     use crate::tiles::{Tile, Dragon, Wind, Suit, TileHelpers, make_tiles_from_string, MakeTile};
+    use std::collections::HashSet;
 
     #[test]
     fn test_melds_from_string(){
@@ -1065,7 +1067,7 @@ mod tests {
                 hanging_tiles: Vec::new() }]);
         let mut tiles = compose_tiles(&make_tiles_from_string("m1,m1,m1,m2,m2,m2,m3,m3,m3").unwrap(), false, None, false).unwrap();
         tiles.retain(|x| x.count_remaining_tiles() == 0 && x.count_pairs() == 0);
-        assert_eq!(tiles, vec![PartialHand {
+        assert_eq!(tiles.iter().collect::<HashSet<_>>(), vec![PartialHand {
                     pairs: Vec::new(),
                     melds: vec![Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, open: false },
                                 Meld::Triplet{tile: Tile::Number{ suit: Suit::Man, number: 2, red: false }, open: false },
@@ -1077,7 +1079,7 @@ mod tests {
                                 Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},
                                 Meld::Sequence{tiles: [Tile::from_string("m1").unwrap(), Tile::from_string("m2").unwrap(), Tile::from_string("m3").unwrap()], open: false},],
                     hanging_tiles: Vec::new() },
-                ]);
+                ].iter().collect::<HashSet<_>>());
     }
 
     #[test]
