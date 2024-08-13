@@ -20,7 +20,7 @@
 - Counters/Repeats
 
 ## Implied signature:
-```
+```rust
 	score_hand(
 		open_tiles = Vec: Tile
 		closed_tiles = Vec: Tile
@@ -83,7 +83,7 @@
 		Tsumo 	100 added to all payments
 
 ## Program Elements:
-```
+```rust
 Enum: WinType
 		Ron
 		Tsumo
@@ -106,6 +106,78 @@ Enum: YakuSpecial 	(Yaku which cannot be determined from hand shape)
 				Robbing a Kan (must be ron)
 				Nagashi Mangan
 Enum: HandError
+```
+
+# Reimplementing Hand Reading
+
+```rust
+pub enum Hand {
+	pub hand_tiles: Vec<Tile>,
+	pub hand_shape: HandShape,
+	pub winning_tile: Tile,
+	pub open: bool,
+	pub yaku: Vec<Yaku>,
+	pub han: i8,
+	pub fu: i8,
+	pub payment: Payment
+}
+
+pub enum HandShape {
+	Standard {
+		pub melds: [Meld; 4],
+		pub pair: Pair
+	},
+	Chiitoi {
+		pub pairs: [Pair; 7]
+	},
+	Kokushi
+}
+
+pub trait HandTrait {
+	fn new(game_state: GameState, seat_state: SeatState, win: Win) -> Option<Self>;
+}
+```
+
+```rust
+pub struct GameState {
+	pub ruleset: RiichiRuleset,
+	pub round_wind: Wind,
+	pub dora_markers: Option<Vec<Tile>>,
+	pub ura_dora_markers: Option<Vec<Tile>>,
+}
+
+pub struct SeatState {
+	pub closed_tiles: Vec<Tile>,
+	pub called_tiles: Option<Vec<Meld>>,
+	pub seat_wind: Wind,
+}
+
+pub struct Win {
+	pub win_type: WinType,
+	pub winning_tile: Tile
+	pub special_yaku: Option<Vec<Yaku>>
+}
+```
+
+```rust
+pub struct Meld {
+	pub tiles: [Option<Tile>; 4]
+	pub is_open: bool
+}
+
+pub trait MeldTrait {
+	fn new(tiles: Vec<Tile>, is_open) -> Self;
+	fn is_quad(&self) -> bool;
+	fn is_trip(&self) -> bool;
+	fn is_seq(&self) -> bool;
+	// etc
+}
+
+pub struct Pair {
+	pub tiles: [Tile; 2]
+}
+
+
 ```
 
 # Reading Waits
