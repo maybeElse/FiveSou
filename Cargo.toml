@@ -1,9 +1,7 @@
 [package]
 name = "fivesou"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-
-[dependencies]
 
 
 [dev-dependencies]
@@ -12,3 +10,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "bench_hand_scoring"
 harness = false
+
+[dependencies]
+itertools = "0.13.0"
