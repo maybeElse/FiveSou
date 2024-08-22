@@ -3,35 +3,20 @@ pub mod errors {
     pub enum HandError {
         NoYaku,
         TileCount,
-        ValueError(ValueError),
+        ValueError,
         ParseError(ParsingError),
-        TileError,
-        WrongPipeline, // nagashi mangan shouldn't go through the normal scoring pipeline
         Unimplemented,
-        NoHands,
-        WrongMeldType,
+        NotAgari
     }
 
     #[derive(Debug, PartialEq)]
     pub enum ParsingError {
+        Empty,
         BadChar,
         BadString,
         BadInteger,
-        Unimplemented
-    }
-
-    #[derive(Debug, PartialEq)]
-    pub enum ValueError {
-        BadInput
-    }
-
-    #[derive(Debug, PartialEq)]
-    pub enum CompositionError {
-        NoYaku,
-        InvalidHand,
-        NotImplemented,
-        DeadBranch,
-        End,
-        BadTiles
+        BadMeld,
+        Unimplemented,
+        NothingFound
     }
 }
