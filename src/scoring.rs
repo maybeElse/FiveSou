@@ -120,7 +120,7 @@ impl CountHan for Vec<Yaku> {
                     // based on sequences
                     Yaku::Pinfu => if !is_open || ruleset.allows_open_tanyao() { han_count + 1 } else { han_count },
                     Yaku::Ipeiko => han_count + 1,
-                    Yaku::Sanshoku | Yaku::Ittsuu => han_count + if is_open { 1 } else { 2 },
+                    Yaku::SanshokuDoujun | Yaku::Ittsuu => han_count + if is_open { 1 } else { 2 },
                     Yaku::Ryanpeiko => han_count + 3,
     
                     // based on triplets/quads
