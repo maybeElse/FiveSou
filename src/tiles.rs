@@ -1,7 +1,10 @@
 use crate::errors::errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
+use crate::hand::{Meld};
+use crate::conversions::{StringConversions, CharConversions};
 use core::fmt;
 use core::cmp::Ordering;
+use std::collections::HashSet;
 
 ///////////////////////
 // structs and enums //
@@ -31,202 +34,194 @@ pub enum Wind {East, South, West, North,}
 // functions //
 ///////////////
 
-pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, HandError> {
-    let mut tiles: Vec<Tile> = Vec::new();
-    let input: Vec<&str> = str.split(',').collect();
-    for tile in input {
-        tiles.push(Tile::from_string(tile)?);
-    }
+pub fn make_tiles_from_string(str: &str) -> Result<Vec<Tile>, ParsingError> {
+    let mut tiles: Vec<Tile> = str.split(',').map(|t| t.to_tile().expect("string should be a tile") ).collect();
     tiles.sort();
-    Ok(tiles)   
+    Ok(tiles) 
 }
 
 ////////////
 // traits //
 ////////////
 
-
-pub trait MakeTile {
-    fn from_char(char: char) -> Result<Self, HandError> where Self: Sized {panic!()}
-    fn from_string(str: &str) -> Result<Self, HandError> where Self: Sized {panic!()} }
-pub trait TileHelpers {
+pub trait TileIs {
     fn is_numbered(&self) -> bool;
     fn is_terminal(&self) -> bool;
+    fn is_simple(&self) -> bool;
     fn is_honor(&self) -> bool;
     fn is_wind(&self) -> bool;
     fn is_dragon(&self) -> bool;
-    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool;
-    fn adjacent_all(&self) -> Vec<[Tile; 2]>;
-    fn adjacent_up(&self) -> Option<[Tile; 2]>;
-    fn adjacent_down(&self) -> Option<[Tile; 2]>;
-    fn adjacent_around(&self) -> Option<[Tile; 2]>;
-    fn adjacent_aside(&self) -> [Tile; 2];
-    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2];
-    fn get_number(&self) -> Option<u8>;
-    fn get_suit(&self) -> Option<Suit>;
-    fn dora(self: &Self) -> Tile; }
-
-impl MakeTile for Tile {
-    fn from_string(str: &str) -> Result<Self, HandError> {
-        let v: Vec<char> = str.chars().collect();
-        match v.len() {
-            3 => {
-                match v[0] {
-                    'p' | 'm' | 's' => {
-                        { Ok(Tile::Number{
-                            suit: Suit::from_char(v[0])?,
-                            number: (v[1] as i8) - 48,
-                            red: {if v.get(2) == Some(&'r') { true } else { false }}
-                        })}
-                    },
-                    _ => Err(HandError::ParseError(ParsingError::BadString)),
-                }},
-            2 => {
-                match v[0] {
-                    'd' => { Ok(Tile::Dragon(Dragon::from_char(v[1]).unwrap())) }
-                    'w' => { Ok(Tile::Wind(Wind::from_char(v[1]).unwrap())) },
-                    'p' | 'm' | 's' => {
-                        { Ok(Tile::Number{
-                            suit: Suit::from_char(v[0])?,
-                            number: (v[1] as i8) - 48,
-                            red: false
-                        })}
-                    },
-                    _ => Err(HandError::ParseError(ParsingError::BadChar)),
-                }},
-            _ => Err(HandError::ParseError(ParsingError::BadString)),
-        }
-} }
-
-impl MakeTile for Dragon {
-    fn from_char(char: char) -> Result<Self, HandError> {
-        match char {
-            'r' => Ok(Dragon::Red),
-            'w' => Ok(Dragon::White),
-            'g' => Ok(Dragon::Green),
-            _ => Err(HandError::ParseError(ParsingError::BadChar)),
-        }
-    }
+    fn is_pure_green(&self, ruleset: &RiichiRuleset) -> bool;
+    fn suit(&self) -> Option<Suit>;
+    fn number(&self) -> Option<i8>;
+    fn wind(&self) -> Option<Wind>;
+    fn dragon(&self) -> Option<Dragon>;
 }
 
-impl MakeTile for Wind {
-    fn from_char(char: char) -> Result<Self, HandError> {
-        match char {
-            'e' => Ok(Wind::East),
-            's' => Ok(Wind::South),
-            'w' => Ok(Wind::West),
-            'n' => Ok(Wind::North),
-            _ => Err(HandError::ParseError(ParsingError::BadChar)),
-} } }
+pub trait TileRelations {
+    fn adjacent_all(&self) -> Vec<[Tile; 2]>;       // returns all possible adjacent tiles
+    fn adjacent_up(&self) -> Option<[Tile; 2]>;     // for numbered tiles, returns n+1 and n+2 (if possible)
+    fn adjacent_down(&self) -> Option<[Tile; 2]>;   // for numbered tiles, returns n-1 and n-2 (if possible)
+    fn adjacent_around(&self) -> Option<[Tile; 2]>; // 
+    fn adjacent_aside(&self) -> Option<[Tile; 2]>;  // returns itself, twice.
+    fn adjacent(&self, one: i8, two: i8) -> Option<[Tile; 2]>; // helper for the others
+}
 
-impl MakeTile for Suit {
-    fn from_char(char: char) -> Result<Self, HandError> {
-        match char {
-            'p' => Ok(Suit::Pin),
-            'm' => Ok(Suit::Man),
-            's' => Ok(Suit::Sou),
-            _ => Err(HandError::ParseError(ParsingError::BadChar)),
-} } }
+pub trait DoraTrait {
+    fn dora(&self) -> Self where Self: Sized;
+}
 
-impl TileHelpers for Tile {
+pub trait TileVecTrait {
+    fn count_occurrences(&self, tile: &Tile) -> usize;
+    fn remove_occurences(&mut self, tile: &Tile, count: usize);
+    fn count_suits(&self) -> usize;
+    fn has_any_simple(&self) -> bool;
+    fn has_any_honor(&self) -> bool;
+    fn has_any_terminal(&self) -> bool;
+    fn count_dora(&self, dora_markers: &Option<Vec<Tile>>) -> u8;
+}
+
+/////////////////////
+// implementations //
+/////////////////////
+
+impl TileIs for Tile {
     fn is_numbered(&self) -> bool {
-        if let Tile::Number {..} = self { true } else { false}
+        if let Tile::Number{..} = self { true } else { false }
     }
     fn is_terminal(&self) -> bool {
-        if let Tile::Number {number, ..} = self {
-                if *number == 1 || *number == 9 { true } else { false }
-        } else { false }
+        if let Tile::Number{number, ..} = self {
+            if *number == 1 || *number == 9 { return true }
+        }
+        false
+    }
+    fn is_simple(&self) -> bool {
+        if let Tile::Number{number, ..} = self {
+            if *number != 1 && *number != 9 { return true }
+        }
+        false
     }
     fn is_honor(&self) -> bool {
         if let Tile::Number {..} = self { false } else { true }
     }
-    fn is_wind(&self) -> bool{
-        if let Tile::Wind {..} = self { true } else { false }
+    fn is_wind(&self) -> bool {
+        if let Tile::Wind(_) = self { true } else { false }
     }
     fn is_dragon(&self) -> bool {
-        if let Tile::Dragon {..} = self { true } else { false }
+        if let Tile::Dragon(_) = self { true } else { false }
     }
-    fn is_pure_green(&self, ruleset: RiichiRuleset) -> bool {
+    fn is_pure_green(&self, ruleset: &RiichiRuleset) -> bool {
         match self {
             Tile::Dragon(dragon) if ruleset.allows_all_green_hatsu() => if let Dragon::Green = dragon { true } else { false },
             Tile::Number {suit, number, ..} => if let Suit::Sou = suit { [2,3,4,6,8].contains(number) } else { false },
             _ => false,
-        }
+    } }
+    fn number(&self) -> Option<i8> {
+        if let Tile::Number{number, ..} = self { return Some(*number) }
+        None
     }
-    fn adjacent_all(&self)  -> Vec<[Tile; 2]> {
-        let arr: [Option<[Tile; 2]>; 3] = [self.adjacent_up(), self.adjacent_around(), self.adjacent_down()];
-        let mut vec: Vec<[Tile; 2]> = vec![self.adjacent_aside()];
-        for element in arr.iter() {
-            if let Some(e) = element { vec.push(*e) } }
-        vec
+    fn suit(&self) -> Option<Suit> {
+        if let Tile::Number{suit, ..} = self { return Some(*suit) }
+        None
     }
-    fn adjacent_up(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, ..} => {
+    fn wind(&self) -> Option<Wind> {
+        if let Tile::Wind(wind) = self { return Some(*wind) }
+        None
+    }
+    fn dragon(&self) -> Option<Dragon> {
+        if let Tile::Dragon(dragon) = self { return Some(*dragon) }
+        None
+    }
+}
+
+impl TileRelations for Tile {
+    fn adjacent_all(&self) -> Vec<[Tile; 2]> { panic!() }
+    fn adjacent_up(&self) -> Option<[Tile; 2]> { self.adjacent(1,2) }
+    fn adjacent_down(&self) -> Option<[Tile; 2]> { self.adjacent(-2,1) }
+    fn adjacent_around(&self) -> Option<[Tile; 2]> { self.adjacent(-1,1) }
+    fn adjacent_aside(&self) -> Option<[Tile; 2]> { Some([self.clone(), self.clone()]) }
+    fn adjacent(&self, one: i8, two: i8) -> Option<[Tile; 2]> {
+        if let Tile::Number {suit, number, ..} = self {
             match number {
                 8 | 9 => None,
-                _ => Some(Self::adjacent(*suit, *number, 1, 2))
-            }},
-            _ => None,}
+                _ => Some([
+                    Tile::Number{suit: *suit, number: number + one, red: false},
+                    Tile::Number{suit: *suit, number: number + two, red: false} ])
+        } } else { None }
     }
-    fn adjacent_down(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, ..} => {
-            match number {
-                1 | 2 => None,
-                _ => Some(Self::adjacent(*suit, *number, -2, -1))
-            }},
-            _ => None,}
-    }
-    fn adjacent_around(&self)  -> Option<[Tile; 2]> {
-        match self {Tile::Number {suit, number, ..} => {
-            match number {
-                1 | 9 => None,
-                _ => Some(Self::adjacent(*suit, *number, -1, 1))
-            }},
-            _ => None,}
-    }
-    fn adjacent_aside(&self) -> [Tile; 2] {
-        [*self, *self] }
-    fn adjacent(suit: Suit, number: i8, one: i8, two: i8) -> [Tile; 2] {
-        let adj: [Tile; 2] = [
-            Tile::Number{suit: suit, number: number + one, red: false},
-            Tile::Number{suit: suit, number: number + two, red: false}
-        ];
-        adj
-    }
-    fn get_number(&self) -> Option<u8> {
-        if let Tile::Number {number, ..} = self { Some(*number as u8) } else { None }
-    }
-    fn get_suit(&self) -> Option<Suit> {
-        if let Tile::Number {suit, ..} = self { Some(*suit) } else { None }
-    }
-    fn dora (self: &Self) -> Tile {
+}
+
+impl DoraTrait for Tile {
+    fn dora(&self) -> Tile {
         match self {
             Tile::Number {suit, number, ..} => {
-                if *number == 9 as i8 {
-                    Tile::Number{suit: *suit, number: 1, red: false}
-                } else {
-                    Tile::Number{suit: *suit, number: number + 1, red: false}
-                }
-            },
-            Tile::Dragon(dragon) => {
-                match dragon {
-                    Dragon::White => Tile::Dragon(Dragon::Green),
-                    Dragon::Green => Tile::Dragon(Dragon::Red),
-                    Dragon::Red => Tile::Dragon(Dragon::White),
-                    
-                }
-            },
-            Tile::Wind(wind) => {
-                match wind {
-                    Wind::East => Tile::Wind(Wind::South),
-                    Wind::South => Tile::Wind(Wind::West),
-                    Wind::West => Tile::Wind(Wind::North),
-                    Wind::North => Tile::Wind(Wind::East),
-                }
-            }
+                if *number == 9 { return Tile::Number{suit: *suit, number: 1, red: false} }
+                else { return Tile::Number{suit: *suit, number: number + 1, red: false} } },
+            Tile::Dragon(dragon) => return Tile::Dragon(dragon.dora()),
+            Tile::Wind(wind) => return Tile::Wind(wind.dora()),
+    } }
+}
+
+impl DoraTrait for Wind {
+    fn dora(&self) -> Self where Self: Sized {
+        match self {
+            Wind::East => Wind::South,
+            Wind::South => Wind::West,
+            Wind::West => Wind::North,
+            Wind::North => Wind::East,
         }
     }
 }
+
+impl DoraTrait for Dragon {
+    fn dora(&self) -> Self where Self: Sized {
+        match self {
+            Dragon::White => Dragon::Green,
+            Dragon::Green => Dragon::Red,
+            Dragon::Red => Dragon::White,
+        }
+    }
+}
+
+macro_rules! impl_TileVecTrait {
+    (for $($t:ty),+) => {
+        $(impl TileVecTrait for $t {
+            fn count_occurrences(&self, tile: &Tile) -> usize {
+                self.iter().fold(0, |acc, value| {if tile == value { acc + 1 } else { acc }})
+            }
+            fn remove_occurences(&mut self, tile: &Tile, count: usize) { panic!() }
+            fn count_suits(&self) -> usize {
+                let suits: HashSet<Suit> = self.iter().filter(|x| x.suit().is_some() ).map(|x| x.suit().unwrap() ).collect();
+                suits.len()
+            }
+            fn has_any_simple(&self) -> bool {
+                self.iter().any(|t| t.is_numbered() && !t.is_terminal())
+            }
+            fn has_any_honor(&self) -> bool {
+                self.iter().any(|t| t.is_honor())
+            }
+            fn has_any_terminal(&self) -> bool {
+                self.iter().any(|t| t.is_terminal())
+            }
+            fn count_dora(&self, dora_markers: &Option<Vec<Tile>>) -> u8 {
+                if let Some(markers) = dora_markers {
+                    let mut dora_tiles: Vec<_> = markers.iter().map(|t| t.dora()).collect();
+                    dora_tiles.sort();
+                    self.iter().fold(0, |acc, t| {
+                        if let Ok(_) = dora_tiles.binary_search(&t) { acc + 1 }
+                        else { acc }
+                    })
+                } else { 0 }
+            }
+        })*
+    }
+}
+
+impl_TileVecTrait!(for Vec<Tile>, [Tile]);
+
+/////////////////////////////
+/// equality & ordinality ///
+/////////////////////////////
 
 impl PartialEq for Tile {
     fn eq(&self, other: &Self) -> bool {
@@ -275,6 +270,10 @@ impl PartialOrd for Tile {
     }
 }
 
+//////////////////
+/// formatting ///
+//////////////////
+
 impl fmt::Display for Tile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -313,93 +312,5 @@ impl fmt::Display for Suit {
             Suit::Man => write!(f, "m",),
             Suit::Sou => write!(f, "s",),
         }
-    }
-}
-
-///////////
-// tests //
-///////////
-
-mod tests {
-    use super::*;
-
-    #[test]
-    fn string_to_tiles(){
-        assert_eq!(make_tiles_from_string("m1").unwrap(), vec![Tile::Number{suit: Suit::Man, number: 1, red: false}]);
-        assert_eq!(make_tiles_from_string("m3,m2,m1").unwrap(), 
-            vec![Tile::Number{suit: Suit::Man, number: 1, red: false},
-                Tile::Number{suit: Suit::Man, number: 2, red: false},
-                Tile::Number{suit: Suit::Man, number: 3, red: false}]);
-        assert_eq!(make_tiles_from_string("we,dw,s2").unwrap(), 
-            vec![Tile::Number{suit: Suit::Sou, number: 2, red: false},
-                Tile::Dragon(Dragon::White),
-                Tile::Wind(Wind::East),]);
-        assert_eq!(make_tiles_from_string("s5,s5r,s5").unwrap(), 
-            vec![Tile::Number{suit: Suit::Sou, number: 5, red: false},
-                Tile::Number{suit: Suit::Sou, number: 5, red: false},
-                Tile::Number{suit: Suit::Sou, number: 5, red: true}]);
-        assert_eq!(make_tiles_from_string("p1,p3,p2,p5r,p4,p6,p7,p8,p9,we,we,we,dr").unwrap(),
-            vec![
-                Tile::Number{suit: Suit::Pin, number: 1, red: false},
-                Tile::Number{suit: Suit::Pin, number: 2, red: false},
-                Tile::Number{suit: Suit::Pin, number: 3, red: false},
-                Tile::Number{suit: Suit::Pin, number: 4, red: false},
-                Tile::Number{suit: Suit::Pin, number: 5, red: true},
-                Tile::Number{suit: Suit::Pin, number: 6, red: false},
-                Tile::Number{suit: Suit::Pin, number: 7, red: false},
-                Tile::Number{suit: Suit::Pin, number: 8, red: false},
-                Tile::Number{suit: Suit::Pin, number: 9, red: false},
-                Tile::Dragon(Dragon::Red),
-                Tile::Wind(Wind::East),
-                Tile::Wind(Wind::East),
-                Tile::Wind(Wind::East),
-            ]);
-    }
-
-    #[test]
-    fn tile_equality(){
-        // making sure that reddness isn't included in equality ...
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: true}, Tile::Number{suit: Suit::Sou, number: 5, red: false});
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: true} > Tile::Number{suit: Suit::Sou, number: 5, red: false}, false);
-    }
-
-    #[test]
-    fn test_dora(){
-        assert_eq!(Tile::Dragon(Dragon::Green).dora(), Tile::Dragon(Dragon::Red));
-        assert_eq!(Tile::Wind(Wind::North).dora(), Tile::Wind(Wind::East));
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.dora(), Tile::Number{suit: Suit::Sou, number: 2, red: false});
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.dora(), Tile::Number{suit: Suit::Sou, number: 1, red: false});
-    }
-
-    #[test]
-    fn test_adjacent(){
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 1, red: false}.adjacent_all(), 
-            vec![[Tile::from_string("s1").unwrap(), Tile::from_string("s1").unwrap()],
-                 [Tile::from_string("s2").unwrap(), Tile::from_string("s3").unwrap()]
-            ]);
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 2, red: false}.adjacent_all(), 
-            vec![[Tile::from_string("s2").unwrap(), Tile::from_string("s2").unwrap()],
-                 [Tile::from_string("s3").unwrap(), Tile::from_string("s4").unwrap()],
-                 [Tile::from_string("s1").unwrap(), Tile::from_string("s3").unwrap()],
-            ]);
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 5, red: false}.adjacent_all(), 
-            vec![[Tile::from_string("s5").unwrap(), Tile::from_string("s5").unwrap()],
-                 [Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()],
-                 [Tile::from_string("s4").unwrap(), Tile::from_string("s6").unwrap()],
-                 [Tile::from_string("s3").unwrap(), Tile::from_string("s4").unwrap()]
-            ]);
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 8, red: false}.adjacent_all(), 
-            vec![[Tile::from_string("s8").unwrap(), Tile::from_string("s8").unwrap()],
-                 [Tile::from_string("s7").unwrap(), Tile::from_string("s9").unwrap()],
-                 [Tile::from_string("s6").unwrap(), Tile::from_string("s7").unwrap()]
-            ]);
-        assert_eq!(Tile::Number{suit: Suit::Sou, number: 9, red: false}.adjacent_all(), 
-            vec![[Tile::from_string("s9").unwrap(), Tile::from_string("s9").unwrap()],
-                 [Tile::from_string("s7").unwrap(), Tile::from_string("s8").unwrap()]
-            ]);
-        assert_eq!(Tile::Wind(Wind::East).adjacent_all(),
-            vec![[Tile::from_string("we").unwrap(), Tile::from_string("we").unwrap()]]);
-        assert_eq!(Tile::Dragon(Dragon::Red).adjacent_all(),
-            vec![[Tile::from_string("dr").unwrap(), Tile::from_string("dr").unwrap()]]);
     }
 }
