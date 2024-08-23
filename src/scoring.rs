@@ -57,7 +57,7 @@ impl CountFu for HandShape {
                         _ => (),
                     }
                 } else { panic!("latest_type set to none during win?") }
-    
+
                 if pair.is_dragon() { fu += 2 } // 2 fu if the pair is a dragon or the round/seat wind
                 else if let Tile::Wind(wind) = pair.tile() {
                     if wind == game_state.round_wind && wind == seat_state.seat_wind { fu += game_state.ruleset.double_wind_fu() }
@@ -65,25 +65,30 @@ impl CountFu for HandShape {
                 }
     
                 if pair.tile() == winning_tile { fu += 2 } // 2 fu for a pair wait
-    
+
+                let mut awarded_wait: bool = false;
                 for meld in melds {
                     if meld.is_seq() && !meld.is_open && meld.contains(&winning_tile) {
                         // sequences only get fu for middle waits and single-sided waits (ie 1,2 waiting on 3)
-                        if meld.tiles[1].is_some_and(|t| t == winning_tile) && pair.tile() != winning_tile { fu += 2 }
-                        else if meld.has_terminal() && !winning_tile.is_terminal() { fu += 2 }
+                        if meld.tiles[1].is_some_and(|t| t == winning_tile) && pair.tile() != winning_tile && !awarded_wait {
+                            awarded_wait = true;
+                            fu += 2
+                        }
+                        else if meld.has_terminal() && !winning_tile.is_terminal() && !awarded_wait {
+                            awarded_wait = true;
+                            fu += 2
+                        }
                     } else if meld.is_trip() {
                         if meld.is_open { fu += meld.base_fu() }
                         else if let Some(tile_type) = seat_state.latest_type { // check whether the meld was opened by the winning call
                             match tile_type {
                                 TileType::Call => {
                                     if meld.contains(&winning_tile) { // check if the win could have opened it.
-                                        if meld.is_quad() { fu += meld.base_fu() } // (I don't think this can happen, but if it did)
-                                        else { // check if there are any sequences which could have been the wait instead.
-                                            if melds.iter().filter(|m| m.is_seq()).any(|m| !m.is_open && m.contains(&winning_tile)) {
-                                                fu += meld.base_fu() * 2    // if so, it should have stayed closed
-                                                // TODO: are there any yaku we need to check for?
-                                            } else { fu += meld.base_fu() } // otherwise, it was opened.
-                                        }
+                                        // check if there are any sequences which could have been the wait instead.
+                                        if melds.iter().filter(|m| m.is_seq()).any(|m| !m.is_open && m.contains(&winning_tile)) {
+                                            fu += meld.base_fu() * 2    // if so, it should have stayed closed
+                                            // TODO: are there any yaku or edge cases to check for?
+                                        } else { fu += meld.base_fu() } // otherwise, it was opened.
                                     }
                                     else { fu += meld.base_fu() * 2 }
                                 }
@@ -95,7 +100,6 @@ impl CountFu for HandShape {
                         else { fu += meld.base_fu() * 2 }
                     }
                 }
-    
                 Ok( fu.round_to_tens() ) // round up to nearest 10
             },
             HandShape::Chiitoi {pairs} => return Ok(25),
@@ -118,7 +122,7 @@ impl CountHan for Vec<Yaku> {
                     Yaku::ClosedTsumo => han_count + 1,
     
                     // based on sequences
-                    Yaku::Pinfu => if !is_open || ruleset.allows_open_tanyao() { han_count + 1 } else { han_count },
+                    Yaku::Pinfu if !is_open => han_count + 1,
                     Yaku::Ipeiko => han_count + 1,
                     Yaku::SanshokuDoujun | Yaku::Ittsuu => han_count + if is_open { 1 } else { 2 },
                     Yaku::Ryanpeiko => han_count + 3,
@@ -127,7 +131,7 @@ impl CountHan for Vec<Yaku> {
                     Yaku::Toitoi | Yaku::Sananko | Yaku::SanshokuDouko | Yaku::Sankantsu => han_count + 2,
     
                     // based on terminal/honor
-                    Yaku::Tanyao => han_count + 1,
+                    Yaku::Tanyao if !is_open || ruleset.allows_open_tanyao() => han_count + 1,
                     Yaku::Yakuhai(count) => han_count + count,
                     Yaku::Chanta => han_count + if is_open { 1 } else { 2 },
                     Yaku::Junchan => han_count + if is_open { 2 } else { 3 },
@@ -149,9 +153,9 @@ impl CountHan for Vec<Yaku> {
                     _ if YAKUMAN.contains(&y) => { // yakuman
                         if has_yakuman && ruleset.has_yakuman_stacking() { han_count + 13
                         } else { has_yakuman = true; 13 } }
-                    _ => panic!(),
+                    _ => han_count,
                 }
-            } else { han_count  }
+            } else { han_count }
         })
     }
 }
@@ -161,13 +165,13 @@ impl CountHan for Vec<Yaku> {
 ///////////////
 
 pub fn calc_base_points( han: u8, fu: u8, yaku: &Vec<Yaku>, ruleset: RiichiRuleset ) -> Result<u32, HandError> {
-    if han < 0 || fu < 20 {
+    if fu < 20 {
         return Err(HandError::ValueError)
     } else {
         match han {
             0 => return Err(HandError::NoYaku),
             1 ..= 4 => {
-                let bp: u32 = (fu as u32) * (2_u32.pow(2 + (han as u32)));
+                let bp: u32 = (fu as u32) * (2_u32.pow((2 + han).into()));
                 if bp > 2000 { Ok(2000)
                 } else if bp == 1920 && ruleset.has_kiriage_mangan(){ Ok(2000)
                 } else { Ok(bp) } },
@@ -205,10 +209,12 @@ macro_rules! impl_ScoreRounding {
     (for $($t:ty),+) => {
         $(impl ScoreRounding for $t {
             fn round_to_tens(&self) -> $t {
-                self + self % 10
+                if self % 10 != 0 { self + (10 - self % 10) }
+                else { *self }
             }
             fn round_to_hundreds(&self) -> $t {
-                self + self % 100
+                if self % 100 != 0 { self + (100 - self % 100) }
+                else { *self }
             }
         })*
     }
@@ -223,6 +229,7 @@ impl_ScoreRounding!(for u8, u32);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::conversions::StringConversions;
 
     #[test]
     fn han_counts(){
@@ -230,6 +237,15 @@ mod tests {
         assert_eq!(vec![Yaku::Chinroto, Yaku::Riichi].han(true, RiichiRuleset::MajSoul), 13);
         assert_eq!(vec![Yaku::Chinroto, Yaku::Honitsu, Yaku::Daisangen, Yaku::Riichi].han(true, RiichiRuleset::MajSoul), 26);
         assert_eq!(vec![Yaku::Daisushi, Yaku::Riichi].han(true, RiichiRuleset::MajSoul), 26);
+    }
+
+    #[test]
+    fn meld_fu(){
+        assert_eq!("m1,m2,m3".to_meld().unwrap().base_fu(), 0);
+        assert_eq!("m2,m2,m2".to_meld().unwrap().base_fu(), 2);
+        assert_eq!("m1,m1,m1".to_meld().unwrap().base_fu(), 4);
+        assert_eq!("m2,m2,m2,m2".to_meld().unwrap().base_fu(), 8);
+        assert_eq!("m1,m1,m1,m1".to_meld().unwrap().base_fu(), 16);
     }
 
     #[test]
