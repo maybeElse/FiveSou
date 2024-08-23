@@ -130,7 +130,7 @@ pub enum HandShape {
 	Chiitoi {
 		pub pairs: [Pair; 7]
 	},
-	Kokushi
+	Kokushi(Vec<Yaku>)
 }
 
 pub trait HandTrait {
