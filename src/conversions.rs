@@ -2,6 +2,8 @@ use crate::errors::errors::{HandError, ParsingError};
 use crate::tiles::{Tile, Suit, Dragon, Wind, TileIs, TileRelations, TileVecTrait};
 use crate::hand::{Meld, Pair};
 use crate::yaku::{Yaku, YakuHelpers};
+use crate::state::TileType;
+use crate::rulesets::RiichiRuleset;
 
 ////////////
 // traits //
@@ -14,12 +16,14 @@ pub trait StringConversions {
     fn to_calls(&self) -> Result<Vec<Meld>, ParsingError>;
     fn to_yaku(&self) -> Result<Yaku,ParsingError>;
     fn to_yaku_vec(&self) -> Result<Vec<Yaku>, ParsingError>;
+    fn to_ruleset(&self) -> Result<RiichiRuleset, ParsingError>;
 }
 
 pub trait CharConversions {
     fn to_dragon(&self) -> Result<Dragon, ParsingError>;
     fn to_wind(&self) -> Result<Wind, ParsingError>;
     fn to_suit(&self) -> Result<Suit, ParsingError>;
+    fn to_tile_type(&self) -> Result<TileType, ParsingError>;
 }
 
 pub trait TileConversions {
@@ -83,10 +87,19 @@ impl StringConversions for str {
         }
     }
     fn to_yaku_vec(&self) -> Result<Vec<Yaku>, ParsingError> {
+        if self.is_empty() { return Ok(Vec::new()) }
         let mut yaku: Vec<Yaku> = Vec::new();
         yaku.append_checked(&(self.split(',').map(|s| s.to_yaku().unwrap()).collect()));
         Ok(yaku)
     }
+    fn to_ruleset(&self) -> Result<RiichiRuleset, ParsingError> {
+        match self.to_lowercase().as_str() {
+            "jpml2022" => return Ok(RiichiRuleset::JPML2022),
+            "jpml2023" => return Ok(RiichiRuleset::JPML2023),
+            "wrc2022" => return Ok(RiichiRuleset::WRC2022),
+            "ema2016" => return Ok(RiichiRuleset::EMA2016),
+            "majsoul" | "mahjongsoul" => return Ok(RiichiRuleset::MajSoul),
+            _ => Ok(RiichiRuleset::Default), } }
 }
 
 impl CharConversions for char {
@@ -112,6 +125,14 @@ impl CharConversions for char {
             's' => Ok(Suit::Sou),
             _ => Err(ParsingError::BadChar),
     } }
+    fn to_tile_type(&self) -> Result<TileType, ParsingError> {
+        match self {
+            'c' => Ok(TileType::Call),
+            'd' => Ok(TileType::Draw),
+            'k' => Ok(TileType::Kan),
+            _ => Err(ParsingError::BadChar),
+        }
+    }
 }
 
 impl TileConversions for Vec<Tile> {
@@ -181,6 +202,10 @@ mod tests {
         assert_eq!('r'.to_suit(), Err(ParsingError::BadChar));
         assert_eq!('e'.to_dragon(), Err(ParsingError::BadChar));
         assert_eq!('r'.to_wind(), Err(ParsingError::BadChar));
+
+        assert_eq!('d'.to_tile_type(), Ok(TileType::Draw));
+        assert_eq!('k'.to_tile_type(), Ok(TileType::Kan));
+        assert_eq!('c'.to_tile_type(), Ok(TileType::Call));
     }
 
     #[test]
