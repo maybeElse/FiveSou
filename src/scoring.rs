@@ -1,4 +1,4 @@
-use crate::state::{Win, TileType, WinType, GameState, SeatState};
+use crate::state::{Win, TileType, WinType, GameState, SeatState, InferWin};
 use crate::errors::errors::{HandError};
 use crate::yaku::{Yaku, YAKUMAN, YakuHelpers};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileIs, TileRelations};
@@ -24,8 +24,8 @@ pub enum Payment{
 ////////////
 
 pub trait HandScore {
-    fn base_points(&self) -> Result<u32, HandError>;
-    fn payment_split(&self) -> Result<Payment, HandError>;
+    fn base_points(&self, ruleset: RiichiRuleset) -> Result<u32, HandError>;
+    fn payment_split(&self, ruleset: RiichiRuleset, repeats: u8) -> Result<Payment, HandError>;
 }
 
 pub trait CountFu {
@@ -39,6 +39,44 @@ pub trait CountHan {
 /////////////////////
 // implementations //
 /////////////////////
+
+impl HandScore for Hand {
+    fn base_points(&self, ruleset: RiichiRuleset) -> Result<u32, HandError> {
+        if let Hand::Agari { fu, han, dora, yaku, .. } = self {
+            if *fu < 20 {
+                return Err(HandError::ValueError)
+            } else {
+                match han {
+                    0 => return Err(HandError::NoYaku),
+                    1 ..= 4 => {
+                        let bp: u32 = (*fu as u32) * (2_u32.pow((2 + han).into()));
+                        if bp > 2000 { Ok(2000)
+                        } else if bp == 1920 && ruleset.has_kiriage_mangan(){ Ok(2000)
+                        } else { Ok(bp) } },
+                    5 => Ok(2000),          // Mangan
+                    6 | 7 => Ok(3000),      // Haneman
+                    8 | 9 | 10 => Ok(4000), // Baiman
+                    11 | 12 => Ok(6000),    // Sanbaiman
+                    _ if *han > 12 => {      // Yakuman and Kazoe Yakuman
+                        if yaku.contains_any(&YAKUMAN.to_vec()) { Ok(8000 * u32::from(han / 13))
+                        } else { Ok(ruleset.kazoe_yakuman_score()) }},
+                    _ => panic!("negative han???"),
+                }
+            }
+        } else { Err(HandError::NotAgari) }
+    }
+    fn payment_split(&self, ruleset: RiichiRuleset, repeats: u8) -> Result<Payment, HandError> {
+        if let Hand::Agari { latest_type, dealer, .. } = self {
+            match latest_type.as_win() {
+                WinType::Tsumo => {
+                    if *dealer { Ok(Payment::DealerTsumo( (self.base_points(ruleset)? * 2).round_to_hundreds() )) }
+                    else { Ok(Payment::Tsumo{dealer: (self.base_points(ruleset)? * 2).round_to_hundreds(), non_dealer: self.base_points(ruleset)?.round_to_hundreds() }) }
+                }
+                WinType::Ron => Ok(Payment::Ron( (self.base_points(ruleset)? * {if *dealer {6} else {4}}).round_to_hundreds() ))
+            }
+        } else { Err(HandError::NotAgari) }
+    }
+}
 
 impl CountFu for HandShape {
     fn fu(&self, game_state: &GameState, seat_state: &SeatState, yaku: &Vec<Yaku>) -> Result<u8, HandError> {
@@ -250,6 +288,7 @@ mod tests {
 
     #[test]
     fn base_point_calc(){
+        // TODO: update test cases for traits
         assert_eq!(calc_base_points(1, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), 400);
         assert_eq!(calc_base_points(2, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), 640);
         assert_eq!(calc_base_points(3, 70, &Vec::new(), RiichiRuleset::Default).unwrap(), 2000);
@@ -266,6 +305,7 @@ mod tests {
 
     #[test]
     fn bp_and_split_calc(){
+        // TODO: update test cases for traits
         assert_eq!(calc_player_split(calc_base_points(4, 40, &Vec::new(), RiichiRuleset::Default).unwrap(), false, WinType::Tsumo, 0).unwrap(),
                     Payment::Tsumo{dealer: 4000, non_dealer: 2000});
         assert_eq!(calc_player_split(calc_base_points(2, 50, &Vec::new(), RiichiRuleset::Default).unwrap(), true, WinType::Tsumo, 0).unwrap(),

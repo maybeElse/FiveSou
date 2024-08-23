@@ -11,6 +11,8 @@ pub mod rulesets;
 pub mod state;
 pub mod conversions;
 
+use scoring::HandScore;
+
 use crate::tiles::{Tile, Wind};
 use crate::conversions::{StringConversions, CharConversions};
 use crate::hand::{Meld, Hand, HandTrait};
@@ -52,12 +54,7 @@ pub fn score_hand_from_str( // note: this depends on specificly formatted input,
         special_yaku: special_yaku.to_yaku_vec().ok(),
     };
 
-    let hand: Hand = Hand::new(game_state.clone(), seat_state.clone());
-
-    calc_player_split(
-        calc_base_points(hand.han() + hand.dora(), hand.fu(), hand.yaku(), game_state.ruleset).expect(""),
-        hand.is_dealer(), seat_state.latest_type.expect("").as_win(), game_state.repeats
-    )
+    Hand::new(game_state.clone(), seat_state).payment_split(game_state.ruleset, game_state.repeats)
 }
 
 // pub fn score_hand_from_structs(
