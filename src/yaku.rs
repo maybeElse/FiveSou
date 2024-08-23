@@ -180,18 +180,17 @@ impl FindYaku for HandShape {
 pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, game_state: &GameState, seat_state: &SeatState) -> Vec<Yaku> {
     let mut yaku: Vec<Yaku> = Vec::new();
     
-    // closed tsumo
-    if matches!(win_type, WinType::Tsumo) && seat_state.called_melds.is_none() { yaku.push_checked(Yaku::ClosedTsumo) }
-
+    // it's a surprise tool that will help us later
     let win_tile = seat_state.latest_tile.unwrap();
     let all_tiles = seat_state.all_tiles();
+    let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
+    let is_closed = !is_open;
+    
+    // closed tsumo
+    if matches!(win_type, WinType::Tsumo) && is_closed { yaku.push_checked(Yaku::ClosedTsumo) }
 
     if !(all_tiles.has_any_honor() || all_tiles.has_any_terminal()) { yaku.push_checked(Yaku::Tanyao) }
-    else if !all_tiles.has_any_simple() { // yaku defined by lack of simple tiles
-        yaku.push_checked(Yaku::Honro);
-        if !all_tiles.has_any_honor() { yaku.push_checked(Yaku::Chinroto) }
-        if !all_tiles.has_any_terminal() { yaku.push_checked(Yaku::Tsuiso) }
-    } else { // chanta and junchan
+    else if all_tiles.has_any_simple() { // chanta and junchan
         if melds.iter().all(|m| m.has_terminal() || m.is_honor()) && !pair.is_simple() {
             if all_tiles.has_any_honor() { yaku.push_checked(Yaku::Chanta) }
             else { yaku.push_checked(Yaku::Junchan) }
@@ -199,20 +198,20 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
     }
 
     let hand_seqs: Vec<_> = melds.iter().filter(|m| m.is_seq()).collect();
-    let hand_trips: Vec<_> = melds.iter().filter(|m| !m.is_seq() && m.is_numbered()).collect();
+    let hand_trips: Vec<_> = melds.iter().filter(|m| !m.is_seq()).collect();
 
     match hand_seqs.len() {
         0 => { // toitoi and friends
             yaku.push_checked(Yaku::Toitoi);
-            if seat_state.called_melds.is_none() { // suuankou variants
+            if is_closed { // suuankou variants
                 if pair.tile() == win_tile { yaku.push_checked(Yaku::SuuankouTanki) }
-                else if matches!(WinType::Tsumo, win_type) { yaku.push_checked(Yaku::Suuankou) }
+                else if matches!(win_type, WinType::Tsumo) { yaku.push_checked(Yaku::Suuankou) }
                 else { yaku.push_checked(Yaku::Sananko) } // ronning opened one of the triplets
             } else { // check if enough of the hand is closed for sananko
-                if check_sananko(melds, pair, &win_type, &win_tile) { yaku.push_checked(Yaku::Sananko) }
+                if check_sananko(&hand_trips, &hand_seqs, pair, &win_type, &win_tile) { yaku.push_checked(Yaku::Sananko) }
             }
         },
-        1 if check_sananko(melds, pair, &win_type, &win_tile) => yaku.push_checked(Yaku::Sananko),
+        1 if check_sananko(&hand_trips, &hand_seqs, pair, &win_type, &win_tile) => yaku.push_checked(Yaku::Sananko),
         4 if !pair.is_dragon() => { // check for pinfu
             // for the pinfu wait to be valid, there must be one closed sequence where the winning tile wasn't in the center.
             // ... but it can't be a one-sided edge wait.
@@ -225,8 +224,12 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
     }
 
     // ipeiko and ryanpeiko are possible
-    if hand_seqs.len() >= 2 && seat_state.called_melds.is_none() { 
-
+    if hand_seqs.len() >= 2 && is_closed {
+        match count_ipeiko(&hand_seqs) {
+            1 => yaku.push_checked(Yaku::Ipeiko),
+            2 => yaku.push_checked(Yaku::Ryanpeiko),
+            _ => ()
+        }
     }
 
     // ittsuu is simple
@@ -243,12 +246,16 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
 
     // suit-dependant yaku
     match seat_state.all_tiles().iter().map(|t| *t).collect::<Vec<_>>().count_suits() {
-        1 => {
+        0 => { // "doesn't have any suits" is technically suit-dependent, right?
+            yaku.push_checked(Yaku::Honro);
+            if !all_tiles.has_any_honor() { yaku.push_checked(Yaku::Chinroto) }
+            if !all_tiles.has_any_terminal() { yaku.push_checked(Yaku::Tsuiso) }
+        },
+        1 => { // single-suit yaku
             if melds.has_any_honor() || pair.is_honor() { yaku.push_checked(Yaku::Honitsu) }
             else { yaku.push_checked(Yaku::Chinitsu);
                 // ... and then check for churenpoto.
-                if seat_state.called_melds.is_none() && melds.iter().all(|m| !m.is_quad()) 
-                && check_churenpoto(&seat_state.all_tiles()) {
+                if is_closed && check_churenpoto(&seat_state.all_tiles()) {
                     yaku.push_checked(Yaku::ChurenPoto);
                     if seat_state.all_tiles().count_occurrences(&win_tile) >= 2 {
                         yaku.push_checked(Yaku::SpecialWait)
@@ -262,6 +269,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
                 yaku.push_checked(Yaku::Ryuiso)
             }
         },
+        // the two cases of all-suit yaku; splitting them feels neater
         3 if hand_seqs.len() >= 3 && check_sanshoku_doujun(&hand_seqs) => { // sanshoku is possible
             yaku.push_checked(Yaku::SanshokuDoujun);
         },
@@ -314,14 +322,13 @@ pub fn find_yaku_chiitoi( hand: &[Pair; 7], win_type: WinType ) -> Vec<Yaku> {
     yaku
 }
 
-fn check_sananko(melds: &[Meld; 4], pair: &Pair, win_type: &WinType, win_tile: &Tile) -> bool {
-    match melds.iter().fold(0, |acc, m| {
-        if !m.is_seq() && !m.is_open { acc + 1 } else { acc }
-    }) {
+fn check_sananko(trips: &Vec<&Meld>, seqs: &Vec<&Meld>, pair: &Pair, win_type: &WinType, win_tile: &Tile) -> bool {
+    match trips.iter().filter(|m| !m.is_open).count() {
         4 => true,
-        3 if matches!(WinType::Tsumo, win_type) => true,
+        3 if matches!(win_type, WinType::Tsumo) => true,
         3 if pair.tile() == *win_tile => true,
-        3 if melds.iter().filter(|m| m.is_seq() && !m.is_open).any(|m| m.contains(win_tile)) => true,
+        3 if !trips.contains_tile(win_tile) => true,
+        3 if seqs.iter().any(|m| !m.is_open && m.contains(win_tile)) => true,
         _ => false
     }
 }
@@ -346,6 +353,20 @@ fn check_ittsuu(melds: &Vec<&Meld>) -> bool {
     false
 }
 
+// returns the number of paired sequences in a Vec<Meld>.
+// doesn't filter input.
+fn count_ipeiko(melds: &Vec<&Meld>) -> u8 {
+    let mut count: u8 = 0;
+    let mut iter = melds.iter().circular_tuple_windows::<(_,_)>();
+    while let Some((a, b)) = iter.next() {
+        if a == b {
+            count += 1;
+            iter.next(); // skip a frame so a triplet of identical sequences won't count as two paired sequences.
+        }
+    }
+    count
+}
+
 // checks if a Vec<Meld> contains three sequences of the same numbers in different suits.
 // doesn't filter input.
 fn check_sanshoku_doujun(melds: &Vec<&Meld>) -> bool {
@@ -362,11 +383,12 @@ fn check_sanshoku_doujun(melds: &Vec<&Meld>) -> bool {
 
 // checks if a Vec<Meld> contains three trips/quads of the same number.
 // doesn't check whether they have different suits.
-// doesn't filter input.
+// filters for numbered trips.
 fn check_sanshoku_douko(melds: &Vec<&Meld>) -> bool {
-    if melds.len() >= 3 {
-        return melds.iter()
-        .map(|m| m.number())
+    let filtered = melds.iter().filter(|m| m.is_numbered()).collect::<Vec<_>>();
+    if filtered.len() >= 3 {
+        return filtered.iter()
+        .map(|m| m.number().unwrap())
         .circular_tuple_windows::<(_,_,_)>()
         .any(|(a, b, c)| a == b && b == c)
     } false
@@ -403,16 +425,180 @@ mod tests {
     use crate::hand::{Hand, HandTrait};
 
     #[test]
-    fn test_reading_hands(){
+    fn yaku_push_checked(){
+        let mut yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Pinfu);
+        assert_eq!(yaku, vec![Yaku::Ipeiko, Yaku::Pinfu]);
+
+        yaku = vec![Yaku::Yakuhai(2)];
+        yaku.push_checked(Yaku::Shosangen);
+        assert_eq!(yaku, vec![Yaku::Yakuhai(2), Yaku::Shosangen]);
+
+        yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Ryanpeiko);
+        assert_eq!(yaku, vec![Yaku::Ryanpeiko]);
+
+        yaku = vec![Yaku::Ipeiko];
+        yaku.push_checked(Yaku::Ipeiko);
+        assert_eq!(yaku, vec![Yaku::Ipeiko]);
+    }
+
+    #[test]
+    fn basic_yaku_tests(){
         let mut game = GameState{
             ruleset: RiichiRuleset::Default, round_wind: Wind::East,
-            dora_markers: None, ura_dora_markers: None };
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
         let mut seat = SeatState{
-            closed_tiles: "m2,m3,m4,p2,p3,p4,s2,s3,s4,dr,dr,dr,m9".to_tiles().unwrap(),
-            called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            closed_tiles: "m2,m3,p5,p6,p7,p4,p5,p6,s3,s4,s5,m7,m7".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("m4".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
         };
-        let mut hand = Hand::new(game, seat);
-        assert_eq!(if let Hand::Agari {yaku, ..} = hand { yaku } else { panic!() }, vec![Yaku::SanshokuDoujun, Yaku::Yakuhai(1)]);
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ClosedTsumo, Yaku::Tanyao, Yaku::Pinfu]);
+
+        seat = SeatState{
+            closed_tiles: "m2,m2,m3,m3,m4,s2,s3,s4,p2,p3,p4,p9,p9".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("m4".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Pinfu, Yaku::Ipeiko, Yaku::SanshokuDoujun]);
+
+        seat = SeatState{
+            closed_tiles: "m2,m2,m3,m3,m4,s2,s3,s4,p2,p2,p2,p8,p8".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("m4".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Tanyao, Yaku::Ipeiko]);
+
+        seat = SeatState{
+            closed_tiles: "p1,p2,p3,p4,p4,p4,p5,p6,p7,p8,s2,s3,s4".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        let mut hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::ClosedTsumo, Yaku::Pinfu, Yaku::Ittsuu]);
+        assert_eq!(hand.han(), 4);
+        assert_eq!(hand.fu(), 20);
+
+        seat = SeatState{
+            closed_tiles: "m2,m2,m3,m3,p3,p3,p5,p5,s6,s6,s7,s8,s8".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("s7".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Chiitoi, Yaku::ClosedTsumo, Yaku::Tanyao]);
+        assert_eq!(hand.han(), 4);
+        assert_eq!(hand.fu(), 25);
+
+        seat = SeatState{
+            closed_tiles: "m5,m6,m7,m8,m8,m8,m3".to_tiles().unwrap(),
+            called_melds: "p8,p8,p8|m2,m2,m2".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("m3".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Tanyao]);
+        assert_eq!(hand.han(), 1);
+        assert_eq!(hand.fu(), 40);
+
+        seat = SeatState{
+            closed_tiles: "p2,p2,we,we".to_tiles().unwrap(),
+            called_melds: "m8,m8,m8|p3,p3,p3|s8,s8,s8".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p2".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Toitoi]);
+        assert_eq!(hand.han(), 2);
+        assert_eq!(hand.fu(), 30);
+
+        seat = SeatState{
+            closed_tiles: "p2,p3,p3,p4,p4,p5,p5".to_tiles().unwrap(),
+            called_melds: "s8,s8,s8|!s7,s7,s7,s7".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p2".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Tanyao]);
+        assert_eq!(hand.han(), 1);
+        assert_eq!(hand.fu(), 40);
+
+        seat = SeatState{
+            closed_tiles: "p2,p3,p3,p4,p4,p5,p5,s8,s8,s8".to_tiles().unwrap(),
+            called_melds: "!s7,s7,s7,s7".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p2".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::ClosedTsumo, Yaku::Tanyao, Yaku::Ipeiko]);
+        assert_eq!(hand.han(), 3);
+        assert_eq!(hand.fu(), 50);
+
+        seat = SeatState{
+            closed_tiles: "m1,m2,m4,m4,m5,m6,m7,s8,s8,s8".to_tiles().unwrap(),
+            called_melds: "we,we,we,we".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m3".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Yakuhai(2)]);
+
+        seat = SeatState{
+            closed_tiles: "m7,m9,m9,m9,s9,s9,s9".to_tiles().unwrap(),
+            called_melds: "ws,ws,ws,ws|s9,s9,s9".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m8".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Chanta]);
+
+        seat = SeatState{
+            closed_tiles: "s2,s3,s1,s3,s2,p7,p8,p9,p1,p1".to_tiles().unwrap(),
+            called_melds: "m1,m2,m3".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Junchan, Yaku::Pinfu]);
+
+        seat = SeatState{
+            closed_tiles: "s1,s1,p1,p1,p3,p3,p3".to_tiles().unwrap(),
+            called_melds: "we,we,we,we|wn,wn,wn,wn".to_calls().ok(), seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Toitoi, Yaku::Yakuhai(1)]);
+
+        game = GameState{
+            ruleset: RiichiRuleset::JPML2022, round_wind: Wind::East,
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
+        seat = SeatState{
+            closed_tiles: "p1,p2,p3,p4,p4,p4,p5,p6,p7,p8,s2,s3,s4".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("p9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::ClosedTsumo, Yaku::Pinfu, Yaku::Ittsuu]);
+        assert_eq!(hand.han(), 4);
+        assert_eq!(hand.fu(), 20);
+    }
+
+    #[test]
+    fn test_churenpoto() {
+        let game = GameState{
+            ruleset: RiichiRuleset::Default, round_wind: Wind::East,
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
+        let mut seat = SeatState{
+            closed_tiles: "p1,p1,p1,p2,p4,p5,p6,p7,p8,p9,p9,p9,p9".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p3".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ChurenPoto]);
+
+        seat = SeatState{
+            closed_tiles: "p1,p1,p1,p2,p3,p4,p5,p6,p7,p8,p9,p9,p9".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p2".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ChurenPoto, Yaku::SpecialWait]);
+
+        seat = SeatState{
+            closed_tiles: "p1,p1,p1,p2,p4,p5,p5,p5,p7,p8,p9,p9,p9".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("p3".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ClosedTsumo, Yaku::Chinitsu]);
     }
 }
