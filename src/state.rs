@@ -12,6 +12,7 @@ use crate::scoring::{Payment};
 pub struct GameState {
 	pub ruleset: RiichiRuleset,
 	pub round_wind: Wind,
+	pub repeats: u8,
 	pub dora_markers: Option<Vec<Tile>>,
 	pub ura_dora_markers: Option<Vec<Tile>>,
 }
@@ -56,13 +57,20 @@ pub trait InferWin {
 
 impl SeatAccess for SeatState {
 	fn all_tiles(&self) -> Vec<Tile> {
+		let mut all: Vec<Tile>;
+		// if you gaze long enough into a void, the void will wink at you
 		if let Some(calls) = &self.called_melds {
-			let mut all = [self.closed_tiles.clone(), 
-				[calls.iter().map(|m| m.as_tiles()).collect::<Vec<_>>()].concat().concat()
-			].concat();
-			all.sort();
-			all
-		} else { self.closed_tiles.clone() }
+			all = self.closed_tiles.iter()
+				.chain(calls.iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat().iter())
+				.chain(self.latest_tile.iter()).map(|t| *t)
+				.collect();
+		} else {
+			all = self.closed_tiles.iter()
+				.chain(self.latest_tile.iter()).map(|t| *t)
+				.collect();
+		}
+		all.sort();
+		all
 	}
 }
 
