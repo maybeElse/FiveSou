@@ -23,6 +23,7 @@ pub enum Hand {
         dora: u8,
         han: u8,
         fu: u8,
+        dealer: bool,
     },
     Tenpai, // TODO
     // {
@@ -78,6 +79,15 @@ pub struct PartialHand {
 
 pub trait HandTrait {
 	fn new(game_state: GameState, seat_state: SeatState) -> Self where Self: Sized;
+
+    // functions for accessing fields without boilerplate
+    fn yaku(&self) -> &Vec<Yaku>;
+    fn dora(&self) -> u8;
+    fn han(&self) -> u8;
+    fn fu(&self) -> u8;
+    fn is_dealer(&self) -> bool;
+    fn is_closed(&self) -> bool;
+    fn is_open(&self) -> bool;
 }
 
 pub trait HandShapeVecTrait {
@@ -138,21 +148,23 @@ impl HandTrait for Hand {
             match possible_wins.len() {
                 0 => panic!("read_win() should not return Some(empty vec)"),
                 _ => {
+                    let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
                     if let Some((best_hand, best_yaku)) = possible_wins.iter()
                         .map(|h| (h, h.yaku(&game_state, &seat_state)))
                         .max_by_key(|(h, y)| calc_base_points(
-                            y.han(seat_state.called_melds.is_some(), game_state.ruleset),
+                            y.han(is_open, game_state.ruleset),
                             h.fu(&game_state, &seat_state, &y).unwrap_or(0), &y, game_state.ruleset).unwrap_or(0)
                     ) {
                         return Hand::Agari {
                             hand_tiles: seat_state.all_tiles(),
                             hand_shape: best_hand.clone(),
                             latest_tile: seat_state.latest_tile.unwrap(),
-                            open: seat_state.called_melds.is_some(),
                             dora: seat_state.all_tiles().count_dora(&game_state.dora_markers),
-                            han: best_yaku.han(seat_state.called_melds.is_some(), game_state.ruleset),
+                            han: best_yaku.han(is_open, game_state.ruleset),
                             fu: best_hand.fu(&game_state, &seat_state, &best_yaku).unwrap(),
                             yaku: best_yaku,
+                            open: is_open,
+                            dealer: seat_state.seat_wind == game_state.round_wind,
                         }
                     }
                 }
@@ -160,6 +172,29 @@ impl HandTrait for Hand {
         }
         panic!("couldn't find a completed hand, reached unimplemented section")
     }
+
+    fn yaku(&self) -> &Vec<Yaku> {
+        if let Hand::Agari {yaku, ..} = self { yaku } else { panic!() }
+    }
+    fn dora(&self) -> u8 {
+        if let Hand::Agari {dora, ..} = self { *dora } else { panic!() }
+    }
+    fn han(&self) -> u8 {
+        if let Hand::Agari {han, ..} = self { *han } else { panic!() }
+    }
+    fn fu(&self) -> u8 {
+        if let Hand::Agari {fu, ..} = self { *fu } else { panic!() }
+    }
+    fn is_dealer(&self) -> bool {
+        if let Hand::Agari {dealer, ..} = self { *dealer } else { panic!() }
+    }
+    fn is_open(&self) -> bool {
+        if let Hand::Agari {open, ..} = self { *open } else { panic!() }
+    }
+    fn is_closed(&self) -> bool {
+        if let Hand::Agari {open, ..} = self { !open } else { panic!() }
+    }
+
 }
 
 impl TileIs for Meld {
@@ -201,7 +236,7 @@ impl MeldHas for Meld {
     fn has_terminal(&self) -> bool { self.tiles.iter().any(|t| t.is_some_and(|t| t.is_terminal())) }
     fn has_simple(&self) -> bool { self.tiles.iter().any(|t| t.is_some_and(|t| t.is_simple())) }
     fn base_fu(&self) -> u8 {
-        if self.is_seq() { return 1 }
+        if self.is_seq() { return 0 }
         else {
             return 2 // base value of a non-sequence meld
                 * { if self.is_quad() { 4 } else { 1 }}         // quadrupled for quads.
@@ -272,14 +307,14 @@ impl PartialHandTrait for PartialHand {
 fn read_win(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_tile: Tile) -> Option<Vec<HandShape>> {
     fn compose_kokushi(all_tiles: &Vec<Tile>, latest_tile: &Tile) -> Option<Vec<Yaku>> {
         // TODO: rewrite to use hashset?
-        if !all_tiles.has_any_simple() {
+        if !all_tiles.has_any_simple() && !latest_tile.is_simple() {
             let mut tiles = all_tiles.clone();
-            tiles.sort();
+            // tiles.sort(); // should already be sorted
             tiles.dedup();
             if tiles.len() == 13 {
-                let mut yaku = vec![Yaku::Kokushi];
-                if all_tiles.contains(&latest_tile) { yaku.push(Yaku::SpecialWait) }
-                return yaku.into()
+                return vec![Yaku::Kokushi, Yaku::SpecialWait].into()
+            } else if tiles.len() == 12 {
+                return vec![Yaku::Kokushi].into()
             }
         } None
     }
@@ -287,28 +322,32 @@ fn read_win(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_til
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<HandShape> = Vec::new();
 
-    let called_melds = {if let Some(ref melds) = called_melds { melds.clone() } else { Vec::new() }};
+    let called_melds = called_melds.unwrap_or_default();
 
     // add in the latest call ...
-    let mut closed_tiles = [closed_tiles, vec![latest_tile]].concat();
+    let mut closed_with_call = [closed_tiles.clone(), vec![latest_tile]].concat();
     // ... and sort the tiles before passing them to compose_tiles()
-    closed_tiles.sort();
+    closed_with_call.sort();
 
-    if let Some(partials) = compose_tiles(&closed_tiles, false, None, true) {
+    if let Some(partials) = compose_tiles(&closed_with_call, false, None, true) {
         for partial in partials {
             // standard hands
             if partial.hanging_tiles.is_empty() && partial.pairs.len() == 1 && (partial.melds.len() + called_melds.len()) == 4 {
+                let mut melds = [partial.melds, called_melds.clone()].concat();
+                melds.sort();
                 possible_hands.push(
                     HandShape::Standard {
-                        melds: [partial.melds, called_melds.clone()].concat().try_into().expect("Wrong number of melds in hand???"),
+                        melds: melds.try_into().expect("Wrong number of melds in hand???"),
                         pair: partial.pairs[0]
                     }
                 )
 
             // chiitoi
             } else if partial.hanging_tiles.is_empty() && partial.pairs.len() == 7 && partial.melds.is_empty() && called_melds.is_empty() {
+                let mut pairs = partial.pairs;
+                pairs.sort();
                 possible_hands.push(
-                    HandShape::Chiitoi{ pairs: partial.pairs.try_into().expect("Wrong number of pairs in chiitoi???") }
+                    HandShape::Chiitoi{ pairs: pairs.try_into().expect("Wrong number of pairs in chiitoi???") }
                 );
             // kokushi
             // only test for thirteen orphans if it's possible, and if no other hands have been found; otherwise it's a waste of time
@@ -329,7 +368,7 @@ fn read_win(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_til
 // Returns only reads in which a hand is in tenpai, along with their waits.
 // If latest_tile is present, also includes which tiles would need to be discarded to enter different tenpais.
 // Attempts to dedup.
-fn read_tenpai(mut closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
+fn read_tenpai(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
     panic!()
 }
 
@@ -337,7 +376,7 @@ fn read_tenpai(mut closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, lat
 // If latest_tile is present, also includes which tiles would need to be discarded for different scenarios.
 // Does not include information about how a hand might be completed.
 // Attempts to dedup.
-fn read_shanten(mut closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
+fn read_shanten(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
     panic!()
 }
 
@@ -472,35 +511,90 @@ mod tests {
     }
 
     #[test]
-    fn test_reading_kokushi(){
-        // let hand: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(), None,
-        //     Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        // assert!(matches!(hand, Hand::Kokushi {..}));
+    fn test_reading_hands(){
+        let game = GameState{
+            ruleset: RiichiRuleset::Default, round_wind: Wind::East,
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
+        let seat = SeatState{
+            closed_tiles: "m2,m3,m4,p2,p3,p4,s2,s3,s4,dr,dr,dr,m9".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::SanshokuDoujun, Yaku::Yakuhai(1)]);
 
-        // assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
-        //     winning_tile: Tile::Number{ suit: Suit::Man, number: 1, red: false }, yaku: vec![Yaku::Kokushi, Yaku::SpecialWait], han: 13, fu: 20});
+        let seat = SeatState{
+            closed_tiles: "p6,p7,p8,s1,s1,s2,s2,s2,s3,s3,s3,we,we".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ClosedTsumo, Yaku::Sananko]);
 
-        // let hand: Hand = compose_hand(crate::tiles::make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap(), None,
-        //     Tile::Number{ suit: Suit::Man, number: 9, red: false }, WinType::Tsumo, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        // assert_eq!(hand, Hand::Kokushi{full_hand: make_tiles_from_string("m1,m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww").unwrap().try_into().unwrap(),
-        //     winning_tile: Tile::Number{ suit: Suit::Man, number: 9, red: false }, yaku: vec![Yaku::Kokushi], han: 13, fu: 20});
+        let seat = SeatState{
+            closed_tiles: "p6,p7,p8,s1,s2,s2,s3,s3,we,we,m1,m2,m3".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Ipeiko]);
+
+        let seat = SeatState{
+            closed_tiles: "we,p2,p3,p4,p2,p3,p4,m1,m2,m3,m1,m2,m3".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("we".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Ryanpeiko]);
     }
 
     #[test]
-    fn test_reading_chiitoi(){         
-        // assert!(matches!(compose_hand(make_tiles_from_string("m1,m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5").unwrap().try_into().unwrap(),
-        //     None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap(), Hand::Chiitoi {..}));
-        
-        // let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m2,m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6").unwrap().try_into().unwrap(),
-        //     None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        // assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Tanyao]);
+    fn test_reading_kokushi(){
+        let game = GameState{
+            ruleset: RiichiRuleset::Default, round_wind: Wind::East,
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
+        let seat = SeatState{
+            closed_tiles: "m1,m1,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Kokushi]);
 
-        // let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("m1,m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr").unwrap().try_into().unwrap(),
-        //     None, Tile::Number{ suit: Suit::Man, number: 1, red: false }, WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        // assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Chiitoi, Yaku::Honro]);
+        let seat = SeatState{
+            closed_tiles: "m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Kokushi, Yaku::SpecialWait]);
+    }
 
-        // let chiitoi_yaku: Hand = compose_hand(make_tiles_from_string("dw,dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn").unwrap().try_into().unwrap(),
-        //     None, Tile::Number{ suit: Suit::Man, number: 2, red: false }, WinType::Ron, Wind::East, Wind::South, None, None, RiichiRuleset::Default).unwrap();
-        // assert_eq!(chiitoi_yaku.get_yaku(), vec![Yaku::Daichiishin]);         
+    #[test]
+    fn test_reading_chiitoi(){
+        let game = GameState{
+            ruleset: RiichiRuleset::Default, round_wind: Wind::East,
+            dora_markers: None, ura_dora_markers: None, repeats: 0 };
+        let seat = SeatState{
+            closed_tiles: "m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi]);
+
+        let seat = SeatState{
+            closed_tiles: "m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("m2".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi, Yaku::Tanyao]);
+
+        let seat = SeatState{
+            closed_tiles: "m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi, Yaku::Honro]);
+
+        let seat = SeatState{
+            closed_tiles: "dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn".to_tiles().unwrap(),
+            called_melds: None, seat_wind: Wind::South, special_yaku: None,
+            latest_tile: Some("dw".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+        };
+        assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Daichiishin]);   
     }
 }
