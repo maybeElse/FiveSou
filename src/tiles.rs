@@ -5,6 +5,7 @@ use crate::conversions::{StringConversions, CharConversions};
 use core::fmt;
 use core::cmp::Ordering;
 use std::collections::HashSet;
+use itertools::Itertools;
 
 ///////////////////////
 // structs and enums //
@@ -191,8 +192,7 @@ macro_rules! impl_TileVecTrait {
             }
             fn remove_occurences(&mut self, tile: &Tile, count: usize) { panic!() }
             fn count_suits(&self) -> usize {
-                let suits: HashSet<Suit> = self.iter().filter(|x| x.suit().is_some() ).map(|x| x.suit().unwrap() ).collect();
-                suits.len()
+                self.iter().map(|x| x.suit()).flatten().unique().count()
             }
             fn has_any_simple(&self) -> bool {
                 self.iter().any(|t| t.is_numbered() && !t.is_terminal())
