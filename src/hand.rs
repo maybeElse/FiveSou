@@ -131,8 +131,8 @@ pub trait PartialHandTrait {
     fn sort(&mut self);
     fn is_complete(&self) -> bool;
     fn is_tenpai(&self) -> bool;
-    fn with_pair(&self, pair: Pair) -> Self where Self: Sized;
-    fn with_meld(&self, meld: Meld) -> Self where Self: Sized;
+    fn push_meld(&mut self, meld: Meld);
+    fn push_pair(&mut self, pair: Pair);
 }
 
 /////////////////////
@@ -286,18 +286,13 @@ impl PartialHandTrait for PartialHand {
         self.hanging_tiles.is_empty() && ((self.melds.len() == 4 && self.pairs.len() == 1) || (self.melds.is_empty() && self.pairs.len() == 7))
     }
     fn is_tenpai(&self) -> bool { panic!() }
-    fn with_pair(&self, pair: Pair) -> PartialHand {
-        PartialHand{
-            hanging_tiles: self.hanging_tiles.clone(),
-            melds: self.melds.clone(),
-            pairs: [self.pairs.clone(), vec![pair]].concat()
-    } }
-    fn with_meld(&self, meld: Meld) -> PartialHand {
-        PartialHand{
-            hanging_tiles: self.hanging_tiles.clone(),
-            pairs: self.pairs.clone(),
-            melds: [self.melds.clone(), vec![meld]].concat()
-    } }
+
+    fn push_meld(&mut self, meld: Meld) {
+        self.melds.push(meld);
+    }
+    fn push_pair(&mut self, pair: Pair) {
+        self.pairs.push(pair);
+    }
 }
 
 ///////////////
@@ -400,8 +395,9 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option
             let subs: Vec<Tile> = remaining_tiles[2..].to_vec();
 
             if let Some(recursions) = compose_tiles(&subs, open, consider_waits, consider_kokushi && (first_tile.is_honor() || first_tile.is_terminal())) {
-                for value in recursions {
-                    partials.push( value.with_pair(temp) ) }
+                for mut value in recursions {
+                    value.push_pair(temp);
+                    partials.push( value ) }
             } else if consider_waits.is_some() || consider_kokushi || len == 2 {
                 partials.push( PartialHand{
                     hanging_tiles: subs,
@@ -432,7 +428,10 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option
 
                     if let Some(found) = temp {
                         if let Some(recursions) = compose_tiles(&subs, open, consider_waits, false) {
-                            for value in recursions { partials.push( value.with_meld(found) ) }
+                            for mut value in recursions { 
+                                value.push_meld(temp?);
+                                partials.push( value )
+                            }
                         } else if consider_waits.is_some() || subs.len() == 0 {
                             partials.push( PartialHand{
                                 hanging_tiles: subs.clone(),
