@@ -199,6 +199,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
 
     let hand_seqs: Vec<_> = melds.iter().filter(|m| m.is_seq()).collect();
     let hand_trips: Vec<_> = melds.iter().filter(|m| !m.is_seq()).collect();
+    let hand_suits = seat_state.all_tiles().count_suits();
 
     match hand_seqs.len() {
         0 => { // toitoi and friends
@@ -233,7 +234,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
     }
 
     // ittsuu is simple
-    if hand_seqs.len() >= 3 && check_ittsuu(&hand_seqs) {
+    if hand_seqs.len() >= 3 && check_ittsuu(&hand_seqs, hand_suits) {
         yaku.push_checked(Yaku::Ittsuu)
     }
 
@@ -245,7 +246,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
     }
 
     // suit-dependant yaku
-    match seat_state.all_tiles().iter().map(|t| *t).collect::<Vec<_>>().count_suits() {
+    match hand_suits {
         0 => { // "doesn't have any suits" is technically suit-dependent, right?
             yaku.push_checked(Yaku::Honro);
             if !all_tiles.has_any_honor() { yaku.push_checked(Yaku::Chinroto) }
@@ -336,15 +337,16 @@ fn check_sananko(trips: &Vec<&Meld>, seqs: &Vec<&Meld>, pair: &Pair, win_type: &
 // checks if a Vec<Meld> (length <= 4) contains tiles 1..=9 in a single suit.
 // probably behaves if given a mixture of sequences and melds, but will return false negatives if a quad is present.
 // the yaku-checking function passes a pre-filtered vec to avoid that.
-fn check_ittsuu(melds: &Vec<&Meld>) -> bool {
+// pre-calculating the number of suits present feels silly, but it improves performance a bit.
+fn check_ittsuu(melds: &Vec<&Meld>, suits: usize) -> bool {
     if melds.len() >= 3 { // only proceed if there are enough melds
         // TODO: rewrite to use hashset?
         let mut tiles = melds.iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat();
         tiles.sort();
         tiles.dedup();
         match tiles.len() {
-            9 if tiles.count_suits() == 1 => return true, // easy.
-            12 if tiles.count_suits() == 2 => { // if two suits are present, we check if one of them has 9 occurences
+            9 if suits == 1 => return true, // easy.
+            12 if suits == 2 => { // if two suits are present, we check if one of them has 9 occurences
                 if matches!( tiles.iter().filter(|t| t.suit() == tiles[0].suit() ).count(), 9 | 3 ) { return true }
             },
             _ => (),
