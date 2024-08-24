@@ -16,7 +16,7 @@ use scoring::HandScore;
 use crate::tiles::{Tile, Wind};
 use crate::conversions::{StringConversions, CharConversions};
 use crate::hand::{Meld, Hand, HandTrait};
-use crate::state::{GameState, SeatState, InferWin};
+use crate::state::{GameState, SeatState, InferWin, SeatHelper, GameHelper};
 use crate::yaku::{Yaku};
 use crate::scoring::{Payment, calc_base_points, calc_player_split};
 use crate::errors::errors::{HandError};
@@ -38,21 +38,21 @@ pub fn score_hand_from_str( // note: this depends on specificly formatted input,
     repeat_counts: u8,      // number of repeat counters on the table
     ruleset: &str           // which ruleset to use
 ) -> Result<Payment, HandError> {
-    let game_state: GameState = GameState {
-        ruleset: ruleset.to_ruleset().unwrap(),
-        round_wind: round_wind.to_wind().unwrap(),
-        dora_markers: dora_markers.to_tiles().ok(),
-        ura_dora_markers: None,
-        repeats: repeat_counts,
-    };
-    let seat_state: SeatState = SeatState {
-        closed_tiles: closed_tiles.to_tiles().unwrap(),
-        called_melds: called_tiles.to_calls().ok(),
-        seat_wind: seat_wind.to_wind().unwrap(),
-        latest_tile: latest_tile.to_tile().ok(),
-        latest_type: latest_type.to_tile_type().ok(),
-        special_yaku: special_yaku.to_yaku_vec().ok(),
-    };
+    let game_state: GameState = GameState::new(
+        ruleset.to_ruleset().unwrap(),
+        round_wind.to_wind().unwrap(),
+        repeat_counts,
+        dora_markers.to_tiles().ok(),
+        None,
+    );
+    let seat_state: SeatState = SeatState::new(
+        closed_tiles.to_tiles().unwrap(),
+        called_tiles.to_calls().ok(),
+        seat_wind.to_wind().unwrap(),
+        latest_tile.to_tile().ok(),
+        latest_type.to_tile_type().ok(),
+        special_yaku.to_yaku_vec().ok(),
+    );
 
     Hand::new(game_state.clone(), seat_state).payment_split(game_state.ruleset, game_state.repeats)
 }

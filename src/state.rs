@@ -1,8 +1,8 @@
-use crate::rulesets::{RiichiRuleset};
+use crate::rulesets::RiichiRuleset;
 use crate::tiles::{Tile, Wind};
-use crate::yaku::{Yaku};
+use crate::yaku::Yaku;
 use crate::hand::{Meld, MeldHas};
-use crate::scoring::{Payment};
+use crate::scoring::Payment;
 
 ///////////////////////
 // structs and enums //
@@ -24,7 +24,8 @@ pub struct SeatState {
 	pub seat_wind: Wind,
     pub latest_tile: Option<Tile>,
     pub latest_type: Option<TileType>,
-	pub special_yaku: Option<Vec<Yaku>>
+	pub special_yaku: Option<Vec<Yaku>>,
+	pub all_tiles: Option<Vec<Tile>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -43,6 +44,27 @@ pub enum WinType {Tsumo, Ron}
 // traits //
 ////////////
 
+pub trait SeatHelper {
+	fn new(
+		closed_tiles: Vec<Tile>,
+		called_melds: Option<Vec<Meld>>,
+		seat_wind: Wind,
+    	latest_tile: Option<Tile>,
+    	latest_type: Option<TileType>,
+		special_yaku: Option<Vec<Yaku>>,
+	) -> Self where Self: Sized;
+}
+
+pub trait GameHelper {
+	fn new(
+		ruleset: RiichiRuleset,
+		round_wind: Wind,
+		epeats: u8,
+		dora_markers: Option<Vec<Tile>>,
+		ura_dora_markers: Option<Vec<Tile>>,
+	) -> Self where Self: Sized;
+}
+
 pub trait SeatAccess {
 	fn all_tiles(&self) -> Vec<Tile>;
 }
@@ -55,22 +77,76 @@ pub trait InferWin {
 // implementations //
 /////////////////////
 
+impl GameHelper for GameState {
+	fn new(
+		ruleset: RiichiRuleset,
+		round_wind: Wind,
+		repeats: u8,
+		dora_markers: Option<Vec<Tile>>,
+		ura_dora_markers: Option<Vec<Tile>>,
+	) -> Self where Self: Sized {
+		GameState {
+			ruleset: ruleset,
+			round_wind: round_wind,
+			repeats: repeats,
+			dora_markers: dora_markers,
+			ura_dora_markers: ura_dora_markers
+		}
+	}
+}
+
+impl SeatHelper for SeatState {
+	fn new(
+		closed_tiles: Vec<Tile>,
+		called_melds: Option<Vec<Meld>>,
+		seat_wind: Wind,
+    	latest_tile: Option<Tile>,
+    	latest_type: Option<TileType>,
+		special_yaku: Option<Vec<Yaku>>,
+	) -> Self where Self: Sized {
+		SeatState {
+			closed_tiles: closed_tiles.clone(),
+			called_melds: called_melds.clone(),
+			seat_wind: seat_wind,
+			latest_tile: latest_tile,
+			latest_type: latest_type,
+			special_yaku: special_yaku,
+			all_tiles: {
+				let mut tiles = [closed_tiles, called_melds.unwrap_or_default().iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat(), {
+					if latest_tile.is_some() { vec![latest_tile.unwrap()] } else { Vec::new() }
+				}].concat();
+				tiles.sort();
+				Some(tiles)
+			}
+		}
+	}
+}
+
 impl SeatAccess for SeatState {
 	fn all_tiles(&self) -> Vec<Tile> {
-		let mut all: Vec<Tile>;
-		// if you gaze long enough into a void, the void will wink at you
-		if let Some(calls) = &self.called_melds {
-			all = self.closed_tiles.iter()
-				.chain(calls.iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat().iter())
-				.chain(self.latest_tile.iter()).map(|t| *t)
-				.collect();
+		if let Some(tiles) = self.all_tiles.clone() {
+			return tiles
 		} else {
-			all = self.closed_tiles.iter()
-				.chain(self.latest_tile.iter()).map(|t| *t)
-				.collect();
+			let mut all_tiles = [self.closed_tiles.clone(), self.called_melds.clone().unwrap_or_default().iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat(), {
+				if self.latest_tile.is_some() { vec![self.latest_tile.unwrap()] } else { Vec::new() }
+			}].concat();
+			all_tiles.sort();
+			return all_tiles
 		}
-		all.sort();
-		all
+		// let mut all: Vec<Tile>;
+		// // if you gaze long enough into a void, the void will wink at you
+		// if let Some(calls) = &self.called_melds {
+		// 	all = self.closed_tiles.iter()
+		// 		.chain(calls.iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat().iter())
+		// 		.chain(self.latest_tile.iter()).map(|t| *t)
+		// 		.collect();
+		// } else {
+		// 	all = self.closed_tiles.iter()
+		// 		.chain(self.latest_tile.iter()).map(|t| *t)
+		// 		.collect();
+		// }
+		// all.sort();
+		// all
 	}
 }
 

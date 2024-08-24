@@ -520,28 +520,28 @@ mod tests {
         let seat = SeatState{
             closed_tiles: "m2,m3,m4,p2,p3,p4,s2,s3,s4,dr,dr,dr,m9".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::SanshokuDoujun, Yaku::Yakuhai(1)]);
 
         let seat = SeatState{
             closed_tiles: "p6,p7,p8,s1,s1,s2,s2,s2,s3,s3,s3,we,we".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::ClosedTsumo, Yaku::Sananko]);
 
         let seat = SeatState{
             closed_tiles: "p6,p7,p8,s1,s2,s2,s3,s3,we,we,m1,m2,m3".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("s1".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Ipeiko]);
 
         let seat = SeatState{
             closed_tiles: "we,p2,p3,p4,p2,p3,p4,m1,m2,m3,m1,m2,m3".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("we".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("we".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Ryanpeiko]);
     }
@@ -554,14 +554,14 @@ mod tests {
         let seat = SeatState{
             closed_tiles: "m1,m1,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Kokushi]);
 
         let seat = SeatState{
             closed_tiles: "m1,m9,p1,p9,s1,s9,dw,dr,dg,we,ws,wn,ww".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), 
+            latest_tile: Some("m9".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Kokushi, Yaku::SpecialWait]);
     }
@@ -574,28 +574,28 @@ mod tests {
         let seat = SeatState{
             closed_tiles: "m1,m2,m2,m4,m4,dw,dw,p6,p6,we,we,s5,s5".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi]);
 
         let seat = SeatState{
             closed_tiles: "m2,m3,m3,m4,m4,s2,s2,s5,s5,p3,p3,p6,p6".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::East, special_yaku: None,
-            latest_tile: Some("m2".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("m2".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi, Yaku::Tanyao]);
 
         let seat = SeatState{
             closed_tiles: "m1,m9,m9,p1,p1,we,we,ww,ww,dw,dw,dr,dr".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::South, special_yaku: None,
-            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("m1".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Chiitoi, Yaku::Honro]);
 
-        let seat = SeatState{
+        let seat = SeatState {
             closed_tiles: "dw,dr,dr,dg,dg,we,we,ww,ww,ws,ws,wn,wn".to_tiles().unwrap(),
             called_melds: None, seat_wind: Wind::South, special_yaku: None,
-            latest_tile: Some("dw".to_tile().unwrap()), latest_type: Some(TileType::Call), 
+            latest_tile: Some("dw".to_tile().unwrap()), latest_type: Some(TileType::Call), all_tiles: None
         };
         assert_eq!(Hand::new(game.clone(), seat).yaku(), &vec![Yaku::Daichiishin]);   
     }
