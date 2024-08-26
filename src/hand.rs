@@ -231,7 +231,6 @@ impl MeldIs for Meld {
 	fn is_quad(&self) -> bool { self.tiles[3].is_some() }
 	fn is_trip(&self) -> bool { self.tiles[3].is_none() && self.tiles[0] == self.tiles[2] }
 	fn is_seq(&self) -> bool { self.tiles[3].is_none() && self.tiles[0] != self.tiles[2] }
-
 }
 
 impl MeldHas for Meld {
@@ -381,7 +380,7 @@ fn read_shanten(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest
 // Has hooks to control what it returns (consider_waits and consider_kokushi).
 // Does not check for hand validity.
 // Requires remaining_tiles to be sorted. Will misbehave otherwise.
-fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option<i8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
+fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
     let len: usize = remaining_tiles.len();
 
     if len <= 1 { return None
@@ -468,7 +467,7 @@ fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option
 mod tests {
     use super::*;
     use crate::tiles::{Tile, Dragon, Wind, Suit};
-    use crate::conversions::{StringConversions};
+    use crate::conversions::StringConversions;
 
     #[test]
     fn test_reading_hand_composition(){
