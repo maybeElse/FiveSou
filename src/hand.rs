@@ -128,11 +128,13 @@ pub trait MeldVecHas {
 }
 
 pub trait PartialHandTrait {
+    fn new(tiles: Vec<Tile>, melds: Vec<Meld>, pairs: Vec<Pair>) -> Self where Self: Sized;
     fn sort(&mut self);
     fn is_complete(&self) -> bool;
     fn is_tenpai(&self) -> bool;
     fn push_meld(&mut self, meld: Meld);
     fn push_pair(&mut self, pair: Pair);
+    fn push_tile(&mut self, tile: Tile);
 }
 
 /////////////////////
@@ -277,6 +279,13 @@ macro_rules! impl_MeldVecHas {
 impl_MeldVecHas!(for Vec<Meld>, Vec<&Meld>, [Meld], Vec<Pair>, [Pair]);
 
 impl PartialHandTrait for PartialHand {
+    fn new(tiles: Vec<Tile>, melds: Vec<Meld>, pairs: Vec<Pair>) -> Self where Self: Sized {
+        PartialHand {
+            hanging_tiles: { if tiles.is_empty() { Vec::with_capacity(14) } else { tiles } },
+            melds: { if melds.is_empty() { Vec::with_capacity(4) } else { melds } },
+            pairs: { if pairs.is_empty() { Vec::with_capacity(7) } else { pairs } },
+        }
+    }
     fn sort(&mut self) {
         self.pairs.sort();
         self.melds.sort();
@@ -291,6 +300,10 @@ impl PartialHandTrait for PartialHand {
     }
     fn push_pair(&mut self, pair: Pair) {
         self.pairs.push(pair);
+    }
+    fn push_tile(&mut self, tile: Tile) {
+        // TODO: find a way to do this that's not O(len)
+        self.hanging_tiles.insert(0, tile);
     }
 }
 
@@ -380,7 +393,7 @@ fn read_shanten(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest
 // Has hooks to control what it returns (consider_waits and consider_kokushi).
 // Does not check for hand validity.
 // Requires remaining_tiles to be sorted. Will misbehave otherwise.
-fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
+pub fn compose_tiles(remaining_tiles: &Vec<Tile>, open: bool, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
     let len: usize = remaining_tiles.len();
 
     if len <= 1 { return None
