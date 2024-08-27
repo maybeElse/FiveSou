@@ -178,7 +178,7 @@ impl FindYaku for HandShape {
 
 // there are a lot of yaku to check for.
 pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, game_state: &GameState, seat_state: &SeatState) -> Vec<Yaku> {
-    let mut yaku: Vec<Yaku> = Vec::new();
+    let mut yaku: Vec<Yaku> = Vec::with_capacity(7);
     
     // it's a surprise tool that will help us later
     let win_tile = seat_state.latest_tile.unwrap();
@@ -308,7 +308,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: &Pair, win_type: WinType, gam
 // chiitoi is only eligible for a few yaku:
 // tanyao, honro, honitsu, chinitsu, and daichiishin.
 pub fn find_yaku_chiitoi( hand: &[Pair; 7], win_type: WinType ) -> Vec<Yaku> {
-    let mut yaku: Vec<Yaku> = Vec::new();
+    let mut yaku: Vec<Yaku> = Vec::with_capacity(4); // a chiitoi hand can have at most 4 yakus
     yaku.push_checked(Yaku::Chiitoi);
     if let WinType::Tsumo = win_type { yaku.push_checked(Yaku::ClosedTsumo) }
     if !hand.has_any_honor() {
@@ -403,7 +403,7 @@ fn check_churenpoto(tiles: &Vec<Tile>) -> bool {
     if tiles.iter().collect::<HashSet<&Tile>>().len() == 9 {
         // naive approach
         // TODO: refactor, test
-        let mut arr: [i8; 9] = [0; 9];
+        let mut arr = [0; 9];
 
         tiles.iter().for_each(|t| arr[(t.number().unwrap() - 1) as usize] += 1 );
 
