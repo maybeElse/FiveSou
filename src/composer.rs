@@ -26,6 +26,8 @@ impl Counter for Vec<Tile> {
     type T = Tile;
 
     fn to_counted_tuples(&mut self) -> Vec<(usize, Self::T)> {
+        self.sort();
+
         let mut vec: Vec<(usize, Tile)> = Vec::with_capacity(self.len());
         let mut iter = self.iter();
         let mut count: usize = 1;
