@@ -5,6 +5,7 @@ use crate::yaku::{Yaku, YakuHelpers, FindYaku};
 use crate::scoring::{Payment, CountFu, CountHan, calc_base_points};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use crate::conversions::{TileConversions, StringConversions};
+use crate::composer::{Composer, Counter};
 use core::fmt;
 use core::iter::repeat;
 
@@ -335,10 +336,10 @@ fn read_win(closed_tiles: Vec<Tile>, called_melds: Option<Vec<Meld>>, latest_til
 
     // add in the latest call ...
     let mut closed_with_call = [closed_tiles.clone(), vec![latest_tile]].concat();
-    // ... and sort the tiles before passing them to compose_tiles()
-    closed_with_call.sort();
+    // ... and convert them into a Vec<(usize, Tile)>
+    let tupled_tiles = closed_with_call.to_counted_tuples();
 
-    if let Some(partials) = compose_tiles(&closed_with_call, false, None, true) {
+    if let Some(partials) = tupled_tiles.compose_tiles(None, true) {
         for partial in partials {
             // standard hands
             if partial.hanging_tiles.is_empty() && partial.pairs.len() == 1 && (partial.melds.len() + called_melds.len()) == 4 {

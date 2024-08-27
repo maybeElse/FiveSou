@@ -10,6 +10,7 @@ pub mod hand;
 pub mod rulesets;
 pub mod state;
 pub mod conversions;
+pub mod composer;
 
 use scoring::HandScore;
 
