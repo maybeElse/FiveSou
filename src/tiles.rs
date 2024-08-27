@@ -192,7 +192,22 @@ macro_rules! impl_TileVecTrait {
             }
             fn remove_occurences(&mut self, tile: &Tile, count: usize) { panic!() }
             fn count_suits(&self) -> usize {
-                self.iter().map(|x| x.suit()).flatten().unique().count()
+                let mut s = [false; 3];
+                let mut i = self.iter();
+
+                while let Some(t) = i.next() {
+                    match t.suit() {
+                        Some(Suit::Sou) => s[0] = true,
+                        Some(Suit::Pin) => s[1] = true,
+                        Some(Suit::Man) => s[2] = true,
+                        None => (),
+                    }
+                    if s[0] && s[1] && s[2] { break }
+                }
+
+                s.iter().fold(0, |acc, v| if *v { acc + 1 } else { acc })
+
+                //self.iter().map(|x| x.suit()).flatten().unique().count()
             }
             fn has_any_simple(&self) -> bool {
                 self.iter().any(|t| t.is_numbered() && !t.is_terminal())
