@@ -1,4 +1,4 @@
-use crate::errors::errors::{HandError, ParsingError};
+use crate::errors::mahjong_errors::{HandError, ParsingError};
 use crate::tiles::{Tile, Suit, Dragon, Wind, TileIs, TileRelations, TileVecTrait};
 use crate::hand::{Meld, Pair};
 use crate::yaku::{Yaku, YakuHelpers};
@@ -9,7 +9,7 @@ use crate::rulesets::RiichiRuleset;
 // traits //
 ////////////
 
-pub trait StringConversions {
+pub trait ConvertStrings {
     fn to_tile(&self) -> Result<Tile, ParsingError>;
     fn to_tiles(&self) -> Result<Vec<Tile>, ParsingError>;
     fn to_meld(&self) -> Result<Meld, ParsingError>;
@@ -19,14 +19,14 @@ pub trait StringConversions {
     fn to_ruleset(&self) -> Result<RiichiRuleset, ParsingError>;
 }
 
-pub trait CharConversions {
+pub trait ConvertChars {
     fn to_dragon(&self) -> Result<Dragon, ParsingError>;
     fn to_wind(&self) -> Result<Wind, ParsingError>;
     fn to_suit(&self) -> Result<Suit, ParsingError>;
     fn to_tile_type(&self) -> Result<TileType, ParsingError>;
 }
 
-pub trait TileConversions {
+pub trait ConvertTiles {
     fn make_meld(&self, open: bool) -> Option<Meld>;
     fn make_pair(&self) -> Option<Pair>;
 }
@@ -35,14 +35,15 @@ pub trait TileConversions {
 // implementations //
 /////////////////////
 
-impl StringConversions for str {
+impl ConvertStrings for str {
+    #[allow(clippy::cast_possible_truncation)]
     fn to_tile(&self) -> Result<Tile, ParsingError> {
         match self.chars().nth(0).expect("string should not be empty") {
-            'p' | 'm' | 's' if self.chars().nth(1).is_some_and(|c| c.is_digit(10)) && ( self.len() == 2 ||  self.len() == 3) => {
+            'p' | 'm' | 's' if self.chars().nth(1).is_some_and(|c| c.is_ascii_digit()) && ( self.len() == 2 ||  self.len() == 3) => {
                 Ok(Tile::Number{
                     suit: self.chars().nth(0).expect("first char should a suit").to_suit()?,
                     number: self.chars().nth(1).expect("second char should be a number").to_digit(10).ok_or(ParsingError::BadInteger)? as i8,
-                    red: {if self.chars().nth(2) == Some('r') { true } else { false }}
+                    red: self.chars().nth(2) == Some('r')
                 })
             },
             'd' if self.len() == 2 => {
@@ -55,21 +56,19 @@ impl StringConversions for str {
         }
     }
     fn to_tiles(&self) -> Result<Vec<Tile>, ParsingError> {
-        if self.is_empty() { return Err(ParsingError::Empty) }
+        if self.is_empty() { Err(ParsingError::Empty) }
         else {
             Ok(self.split(',').map(|s| s.to_tile().expect("string should be a tile")).collect::<Vec<_>>())
         }
     }
     fn to_meld(&self) -> Result<Meld, ParsingError> {
-        if self.is_empty() { return Err(ParsingError::Empty) }
-        else {
-            if self.chars().nth(0) == Some('!') { self[1..].to_tiles()?.make_meld(false).ok_or(ParsingError::BadMeld) }
+        if self.is_empty() { Err(ParsingError::Empty) }
+        else if self.chars().nth(0) == Some('!') { self[1..].to_tiles()?.make_meld(false).ok_or(ParsingError::BadMeld) }
             else { self.to_tiles()?.make_meld(true).ok_or(ParsingError::BadMeld) }
-        }
     }
     fn to_calls(&self) -> Result<Vec<Meld>, ParsingError> {
-        if self.is_empty() { return Ok(Vec::new()) }
-        else { return Ok(self.split('|').map(|s| s.to_meld().expect("tiles should be a valid meld")).collect()) }
+        if self.is_empty() { Ok(Vec::new()) }
+        else { Ok(self.split('|').map(|s| s.to_meld().expect("tiles should be a valid meld")).collect()) }
     }
     fn to_yaku(&self) -> Result<Yaku,ParsingError> {
         match self.to_lowercase().as_str() {
@@ -83,26 +82,26 @@ impl StringConversions for str {
             "nagashimangan" => Ok(Yaku::NagashiMangan),
             "tenho" | "blessingofheaven" => Ok(Yaku::Tenho),
             "chiho" | "blessingofearth" => Ok(Yaku::Chiho),
-            _ => return Err(ParsingError::BadString)
+            _ => Err(ParsingError::BadString)
         }
     }
     fn to_yaku_vec(&self) -> Result<Vec<Yaku>, ParsingError> {
         if self.is_empty() { return Ok(Vec::new()) }
         let mut yaku: Vec<Yaku> = Vec::new();
-        yaku.append_checked(&(self.split(',').map(|s| s.to_yaku().unwrap()).collect()));
+        self.split(',').map(|s| s.to_yaku().unwrap()).for_each(|y| yaku.push_checked(y));
         Ok(yaku)
     }
     fn to_ruleset(&self) -> Result<RiichiRuleset, ParsingError> {
         match self.to_lowercase().as_str() {
-            "jpml2022" => return Ok(RiichiRuleset::JPML2022),
-            "jpml2023" => return Ok(RiichiRuleset::JPML2023),
-            "wrc2022" => return Ok(RiichiRuleset::WRC2022),
-            "ema2016" => return Ok(RiichiRuleset::EMA2016),
-            "majsoul" | "mahjongsoul" => return Ok(RiichiRuleset::MajSoul),
+            "jpml2022" => Ok(RiichiRuleset::JPML2022),
+            "jpml2023" => Ok(RiichiRuleset::JPML2023),
+            "wrc2022" => Ok(RiichiRuleset::WRC2022),
+            "ema2016" => Ok(RiichiRuleset::EMA2016),
+            "majsoul" | "mahjongsoul" => Ok(RiichiRuleset::MajSoul),
             _ => Ok(RiichiRuleset::Default), } }
 }
 
-impl CharConversions for char {
+impl ConvertChars for char {
     fn to_dragon(&self) -> Result<Dragon, ParsingError> {
         match self {
             'r' => Ok(Dragon::Red),
@@ -135,9 +134,9 @@ impl CharConversions for char {
     }
 }
 
-impl TileConversions for Vec<Tile> {
+impl ConvertTiles for Vec<Tile> {
     fn make_meld(&self, open: bool) -> Option<Meld> {
-        fn pad_to_length(tiles: &Vec<Tile>) -> [Option<Tile>; 4] {
+        fn pad_to_length(tiles: &[Tile]) -> [Option<Tile>; 4] {
             let mut array: [Option<Tile>; 4] = [None; 4];
             for t in 0..tiles.len() { array[t] = Some(tiles[t]) }
             array
@@ -168,16 +167,16 @@ impl TileConversions for Vec<Tile> {
                 is_open: open
             })
         } else { panic!("bad meld length!") }
-        return None
+        None
     }
     fn make_pair(&self) -> Option<Pair> {
-        if self.len() == 2 && self.get(0) == self.get(1) {
+        if self.len() == 2 && self.first() == self.get(1) {
             return Some(Pair{tiles: [self[0], self[1]]})
         } None
     }
 }
 
-impl TileConversions for [Tile] { // TODO: idk
+impl ConvertTiles for [Tile] { // TODO: idk
     fn make_meld(&self, open: bool) -> Option<Meld> {
         self.to_vec().make_meld(open)
     }

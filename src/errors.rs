@@ -1,4 +1,4 @@
-pub mod errors {
+pub mod mahjong_errors {
     #[derive(Debug, PartialEq)]
     pub enum HandError {
         NoYaku,

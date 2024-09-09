@@ -9,7 +9,7 @@ use crate::scoring::Payment;
 ///////////////////////
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct GameState {
+pub struct Game {
 	pub ruleset: RiichiRuleset,
 	pub round_wind: Wind,
 	pub repeats: u8,
@@ -18,7 +18,7 @@ pub struct GameState {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct SeatState {
+pub struct Seat {
 	pub closed_tiles: Vec<Tile>,
 	pub called_melds: Option<Vec<Meld>>,
 	pub seat_wind: Wind,
@@ -77,7 +77,7 @@ pub trait InferWin {
 // implementations //
 /////////////////////
 
-impl GameHelper for GameState {
+impl GameHelper for Game {
 	fn new(
 		ruleset: RiichiRuleset,
 		round_wind: Wind,
@@ -85,17 +85,17 @@ impl GameHelper for GameState {
 		dora_markers: Option<Vec<Tile>>,
 		ura_dora_markers: Option<Vec<Tile>>,
 	) -> Self where Self: Sized {
-		GameState {
-			ruleset: ruleset,
-			round_wind: round_wind,
-			repeats: repeats,
-			dora_markers: dora_markers,
-			ura_dora_markers: ura_dora_markers
+		Game {
+			ruleset,
+			round_wind,
+			repeats,
+			dora_markers,
+			ura_dora_markers
 		}
 	}
 }
 
-impl SeatHelper for SeatState {
+impl SeatHelper for Seat {
 	fn new(
 		closed_tiles: Vec<Tile>,
 		called_melds: Option<Vec<Meld>>,
@@ -104,15 +104,15 @@ impl SeatHelper for SeatState {
     	latest_type: Option<TileType>,
 		special_yaku: Option<Vec<Yaku>>,
 	) -> Self where Self: Sized {
-		SeatState {
+		Seat {
 			closed_tiles: closed_tiles.clone(),
 			called_melds: called_melds.clone(),
-			seat_wind: seat_wind,
-			latest_tile: latest_tile,
-			latest_type: latest_type,
-			special_yaku: special_yaku,
+			seat_wind,
+			latest_tile,
+			latest_type,
+			special_yaku,
 			all_tiles: {
-				let mut tiles = [closed_tiles, called_melds.unwrap_or_default().iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat(), {
+				let mut tiles = [closed_tiles, called_melds.unwrap_or_default().iter().map(super::hand::MeldHas::as_tiles).collect::<Vec<_>>().concat(), {
 					if latest_tile.is_some() { vec![latest_tile.unwrap()] } else { Vec::new() }
 				}].concat();
 				tiles.sort();
@@ -122,16 +122,16 @@ impl SeatHelper for SeatState {
 	}
 }
 
-impl SeatAccess for SeatState {
+impl SeatAccess for Seat {
 	fn all_tiles(&self) -> Vec<Tile> {
 		if let Some(tiles) = self.all_tiles.clone() {
-			return tiles
+			tiles
 		} else {
-			let mut all_tiles = [self.closed_tiles.clone(), self.called_melds.clone().unwrap_or_default().iter().map(|m| m.as_tiles()).collect::<Vec<_>>().concat(), {
+			let mut all_tiles = [self.closed_tiles.clone(), self.called_melds.clone().unwrap_or_default().iter().map(super::hand::MeldHas::as_tiles).collect::<Vec<_>>().concat(), {
 				if self.latest_tile.is_some() { vec![self.latest_tile.unwrap()] } else { Vec::new() }
 			}].concat();
 			all_tiles.sort();
-			return all_tiles
+			all_tiles
 		}
 		// let mut all: Vec<Tile>;
 		// // if you gaze long enough into a void, the void will wink at you

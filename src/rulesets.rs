@@ -25,8 +25,8 @@ pub trait RuleVariations {
     fn kazoe_yakuman_score(&self) -> u32 {8000}     // do 13+ han hands count as yakuman?
     fn double_wind_fu(&self) -> u8 {4}              // fu for seat+round wind pairs
     fn is_rinshan_tsumo(&self) -> bool {false}      // do rinshan winds score fu as a ron or tsumo?
-    fn repeat_payment_ron(&self, counters: u8) -> i32 {counters as i32 * 300}
-    fn repeat_payment_tsumo(&self, counters: u8) -> i32 {counters as i32 * 100}
+    fn repeat_payment_ron(&self, counters: u8) -> i32 {i32::from(counters) * 300}
+    fn repeat_payment_tsumo(&self, counters: u8) -> i32 {i32::from(counters) * 100}
     fn allows_all_green_hatsu(&self) -> bool {true} // is hatsu permitted in all green yakuman?
     fn requires_all_green_hatsu(&self) -> bool {false}  // ... is hatsu *required* in all green yakuman?
     fn allows_ippatsu(&self) -> bool {false}
@@ -37,27 +37,27 @@ pub trait RuleVariations {
 }
 
 impl RuleVariations for RiichiRuleset {
-    fn has_kiriage_mangan(&self) -> bool { match self {
-        RiichiRuleset::WRC2022 | RiichiRuleset::MajSoul => true, _ => false, } } // TODO: verify MajSoul rules
-    fn has_yakuman_stacking(&self) -> bool { match self {
-        RiichiRuleset::EMA2016 => false, _ => true, } } // TODO: verify JPML rules
-    fn has_double_yakuman(&self) -> bool { match self {
-        RiichiRuleset::MajSoul => true, _ => false, } } // TODO: verify JPML rules
+    fn has_kiriage_mangan(&self) -> bool {
+        matches!(self, RiichiRuleset::WRC2022 | RiichiRuleset::MajSoul) } // TODO: verify MajSoul rules
+    fn has_yakuman_stacking(&self) -> bool {
+        !matches!(self, RiichiRuleset::EMA2016) } // TODO: verify JPML rules
+    fn has_double_yakuman(&self) -> bool {
+        matches!(self, RiichiRuleset::MajSoul) } // TODO: verify JPML rules
     fn kazoe_yakuman_score(&self) -> u32 { match self {
         RiichiRuleset::MajSoul => 8000, _ => 6000, } }
     fn double_wind_fu(&self) -> u8 { match self {
         RiichiRuleset::MajSoul | RiichiRuleset::JPML2022 => 4, _ => 2, } } // TODO: verify EMA rules
-    fn is_rinshan_tsumo(&self) -> bool { match self {
-        RiichiRuleset::JPML2022 => false, _ => true, } } // TODO: verify MajSoul rules
+    fn is_rinshan_tsumo(&self) -> bool { 
+        !matches!(self, RiichiRuleset::JPML2022) } // TODO: verify MajSoul rules
     fn allows_all_green_hatsu(&self) -> bool { true }
-    fn requires_all_green_hatsu(&self) -> bool { match self {
-        RiichiRuleset::JPML2022 => true, _ => false, } }
-    fn allows_ippatsu(&self) -> bool { match self {
-        RiichiRuleset::JPML2022 | RiichiRuleset::JPML2023 => false, _ => true, } }
-    fn allows_nagashi_mangan(&self) -> bool { match self {
-        RiichiRuleset::EMA2016 => false, _ => true, } }
-    fn counts_akadora(&self) -> bool { match self {
-        RiichiRuleset::MajSoul | RiichiRuleset::WRC2022 => true, _ => false, } }
+    fn requires_all_green_hatsu(&self) -> bool { 
+        matches!(self, RiichiRuleset::JPML2022) }
+    fn allows_ippatsu(&self) -> bool {
+        !matches!(self, RiichiRuleset::JPML2022 | RiichiRuleset::JPML2023) }
+    fn allows_nagashi_mangan(&self) -> bool {
+        !matches!(self, RiichiRuleset::EMA2016) }
+    fn counts_akadora(&self) -> bool {
+        matches!(self, RiichiRuleset::MajSoul | RiichiRuleset::WRC2022) }
 }
 
 mod tests {

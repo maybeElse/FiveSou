@@ -1,5 +1,5 @@
-use crate::state::{Win, TileType, WinType, GameState, SeatState, InferWin};
-use crate::errors::errors::{HandError};
+use crate::state::{Win, TileType, WinType, Game, Seat, InferWin};
+use crate::errors::mahjong_errors::HandError;
 use crate::yaku::{Yaku, YAKUMAN, YakuHelpers};
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileIs, TileRelations};
 use crate::hand::{Hand, HandShape, Meld, Pair, MeldHas, MeldIs, PairTrait, MeldVecHas};
@@ -29,7 +29,7 @@ pub trait HandScore {
 }
 
 pub trait CountFu {
-    fn fu(&self, game_state: &GameState, seat_state: &SeatState, yaku: &Vec<Yaku>) -> Result<u8, HandError>;
+    fn fu(&self, game_state: &Game, seat_state: &Seat, yaku: &[Yaku]) -> Result<u8, HandError>;
 }
 
 pub trait CountHan {
@@ -44,18 +44,14 @@ impl HandScore for Hand {
     fn base_points(&self, ruleset: RiichiRuleset) -> Result<u32, HandError> {
         if let Hand::Agari { fu, han, dora, yaku, .. } = self {
             if *fu < 20 {
-                return Err(HandError::ValueError)
+                Err(HandError::ValueError)
             } else {
                 match han {
-                    0 => return Err(HandError::NoYaku),
-                    1 ..= 4 => {
-                        let bp: u32 = (*fu as u32) * (2_u32.pow((2 + han).into()));
-                        if bp > 2000 { Ok(2000)
-                        } else if bp == 1920 && ruleset.has_kiriage_mangan(){ Ok(2000)
-                        } else { Ok(bp) } },
+                    0 => Err(HandError::NoYaku),
+                    1 ..= 4 => Ok(calc_points_normally(*fu, *han, ruleset)),
                     5 => Ok(2000),          // Mangan
                     6 | 7 => Ok(3000),      // Haneman
-                    8 | 9 | 10 => Ok(4000), // Baiman
+                    8 ..= 10 => Ok(4000), // Baiman
                     11 | 12 => Ok(6000),    // Sanbaiman
                     _ if *han > 12 => {      // Yakuman and Kazoe Yakuman
                         if yaku.contains_any(&YAKUMAN.to_vec()) { Ok(8000 * u32::from(han / 13))
@@ -79,7 +75,7 @@ impl HandScore for Hand {
 }
 
 impl CountFu for HandShape {
-    fn fu(&self, game_state: &GameState, seat_state: &SeatState, yaku: &Vec<Yaku>) -> Result<u8, HandError> {
+    fn fu(&self, game_state: &Game, seat_state: &Seat, yaku: &[Yaku]) -> Result<u8, HandError> {
         match self {
             HandShape::Standard {melds, pair} => {
                 let mut fu: u8 = 20;    // 20 fu for winning
@@ -108,13 +104,11 @@ impl CountFu for HandShape {
                 for meld in melds {
                     if meld.is_seq() && !meld.is_open && meld.contains(&winning_tile) {
                         // sequences only get fu for middle waits and single-sided waits (ie 1,2 waiting on 3)
-                        if meld.tiles[1].is_some_and(|t| t == winning_tile) && pair.tile() != winning_tile && !awarded_wait {
+                        if !awarded_wait && 
+                            ( (meld.tiles[1].is_some_and(|t| t == winning_tile) && pair.tile() != winning_tile)
+                            || (meld.has_terminal() && !winning_tile.is_terminal()) ) {
                             awarded_wait = true;
-                            fu += 2
-                        }
-                        else if meld.has_terminal() && !winning_tile.is_terminal() && !awarded_wait {
-                            awarded_wait = true;
-                            fu += 2
+                            fu += 2;
                         }
                     } else if meld.is_trip() {
                         if meld.is_open { fu += meld.base_fu() }
@@ -124,7 +118,7 @@ impl CountFu for HandShape {
                                     if meld.contains(&winning_tile) { // check if the win could have opened it.
                                         // check if there are any sequences which could have been the wait instead.
                                         if melds.iter().filter(|m| m.is_seq()).any(|m| !m.is_open && m.contains(&winning_tile)) {
-                                            fu += meld.base_fu() * 2    // if so, it should have stayed closed
+                                            fu += meld.base_fu() * 2;    // if so, it should have stayed closed
                                             // TODO: are there any yaku or edge cases to check for?
                                         } else { fu += meld.base_fu() } // otherwise, it was opened.
                                     }
@@ -140,13 +134,14 @@ impl CountFu for HandShape {
                 }
                 Ok( fu.round_to_tens() ) // round up to nearest 10
             },
-            HandShape::Chiitoi {pairs} => return Ok(25),
-            HandShape::Kokushi(_) => return Ok(20), // Kokushi doesn't have fu, so this doesn't matter.
-            _ => return Err(HandError::NotAgari) // won't calculate overall fu for an incomplete hand.
+            HandShape::Chiitoi {pairs} => Ok(25),
+            HandShape::Kokushi(_) => Ok(20), // Kokushi doesn't have fu, so this doesn't matter.
+            _ => Err(HandError::NotAgari) // won't calculate overall fu for an incomplete hand.
         }   
     }
 }
 
+#[allow(clippy::match_same_arms)]
 impl CountHan for Vec<Yaku> {
     fn han(&self, is_open: bool, ruleset: RiichiRuleset) -> u8 {
         let mut has_yakuman: bool = false;
@@ -188,7 +183,7 @@ impl CountHan for Vec<Yaku> {
                     // yakuman hands
                     Yaku::Daisushi | Yaku::Daichiishin | Yaku::SuuankouTanki if ruleset.has_double_yakuman() => { // double yakuman
                         if has_yakuman { han_count + 26 } else { has_yakuman = true; 26 } }
-                    _ if YAKUMAN.contains(&y) => { // yakuman
+                    _ if YAKUMAN.contains(y) => { // yakuman
                         if has_yakuman && ruleset.has_yakuman_stacking() { han_count + 13
                         } else { has_yakuman = true; 13 } }
                     _ => han_count,
@@ -204,24 +199,26 @@ impl CountHan for Vec<Yaku> {
 
 pub fn calc_base_points( han: u8, fu: u8, yaku: &Vec<Yaku>, ruleset: RiichiRuleset ) -> Result<u32, HandError> {
     if fu < 20 {
-        return Err(HandError::ValueError)
+        Err(HandError::ValueError)
     } else {
         match han {
-            0 => return Err(HandError::NoYaku),
-            1 ..= 4 => {
-                let bp: u32 = (fu as u32) * (2_u32.pow((2 + han).into()));
-                if bp > 2000 { Ok(2000)
-                } else if bp == 1920 && ruleset.has_kiriage_mangan(){ Ok(2000)
-                } else { Ok(bp) } },
+            0 => Err(HandError::NoYaku),
+            1 ..= 4 => Ok(calc_points_normally(fu, han, ruleset)),
             5 => Ok(2000),          // Mangan
             6 | 7 => Ok(3000),      // Haneman
-            8 | 9 | 10 => Ok(4000), // Baiman
+            8 ..= 10 => Ok(4000), // Baiman
             11 | 12 => Ok(6000),    // Sanbaiman
             _ if han > 12 => {      // Yakuman and Kazoe Yakuman
                 if yaku.contains_any(&YAKUMAN.to_vec()) { Ok(8000 * u32::from(han / 13))
                 } else { Ok(ruleset.kazoe_yakuman_score()) }},
             _ => panic!("negative han???"),
 } } }
+
+fn calc_points_normally(fu: u8, han: u8, ruleset: RiichiRuleset) -> u32 {
+    let bp: u32 = (u32::from(fu)) * (2_u32.pow((2 + han).into()));
+    if bp > 2000 || (bp == 1920 && ruleset.has_kiriage_mangan()) { 2000 }
+    else { bp }
+}
 
 pub fn calc_player_split(
     base: u32,
@@ -239,7 +236,9 @@ pub fn calc_player_split(
 }
 
 pub trait ScoreRounding {
+    #[must_use]
     fn round_to_tens(&self) -> Self;
+    #[must_use]
     fn round_to_hundreds(&self) -> Self;
 }
 
@@ -267,7 +266,7 @@ impl_ScoreRounding!(for u8, u32);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversions::StringConversions;
+    use crate::conversions::ConvertStrings;
 
     #[test]
     fn han_counts(){

@@ -1,7 +1,7 @@
 use crate::tiles::{Tile, Dragon, Wind, Suit, TileIs, TileRelations};
-use crate::errors::errors::{HandError, ParsingError};
+use crate::errors::mahjong_errors::{HandError, ParsingError};
 use crate::hand::{HandShape, Meld, Pair, Wait, PartialHand, PartialHandTrait};
-use crate::conversions::TileConversions;
+use crate::conversions::ConvertTiles;
 
 ////////////
 // traits //
@@ -33,7 +33,7 @@ impl Counter for Vec<Tile> {
         let mut count: usize = 1;
         let mut last: &Tile = iter.next().unwrap();
 
-        while let Some(new) = iter.next() {
+        for new in iter {
             if new != last {
                 vec.push((count, *last));
                 count = 0;
@@ -49,7 +49,7 @@ impl Counter for Vec<Tile> {
 
 impl Composer for Vec<(usize, Tile)> {
     fn compose_tiles(&self, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
-        if self.is_empty() { return None }
+        if self.is_empty() { None }
         else {
             let length: usize = self.len();
             let depth: usize = self[0].0;
@@ -131,8 +131,8 @@ impl Composer for Vec<(usize, Tile)> {
             partials.sort();
             partials.dedup();
             
-            if partials.is_empty() { return None }
-            else { return partials.into() }
+            if partials.is_empty() { None }
+            else { partials.into() }
         }
     }
 
@@ -154,9 +154,10 @@ impl Composer for Vec<(usize, Tile)> {
 // tests //
 ///////////
 
+#[allow(deprecated)]
 mod tests {
     use super::*;
-    use crate::conversions::StringConversions;
+    use crate::conversions::ConvertStrings;
     use crate::hand::PartialHandTrait;
     use crate::hand::compose_tiles;
 

@@ -1,17 +1,18 @@
-use crate::errors::errors::{HandError, ParsingError};
+use crate::errors::mahjong_errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
-use crate::hand::{Meld};
-use crate::conversions::{StringConversions, CharConversions};
+use crate::hand::Meld;
+use crate::conversions::{ConvertStrings, ConvertChars};
 use core::fmt;
 use core::cmp::Ordering;
 use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use itertools::Itertools;
 
 ///////////////////////
 // structs and enums //
 ///////////////////////
 
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub enum Tile {
     Number{
         suit: Suit,
@@ -88,7 +89,7 @@ pub trait TileVecTrait {
 
 impl TileIs for Tile {
     fn is_numbered(&self) -> bool {
-        if let Tile::Number{..} = self { true } else { false }
+        matches!(self, Tile::Number{..})
     }
     fn is_terminal(&self) -> bool {
         if let Tile::Number{number, ..} = self {
@@ -103,18 +104,18 @@ impl TileIs for Tile {
         false
     }
     fn is_honor(&self) -> bool {
-        if let Tile::Number {..} = self { false } else { true }
+        !matches!(self, Tile::Number{..})
     }
     fn is_wind(&self) -> bool {
-        if let Tile::Wind(_) = self { true } else { false }
+        matches!(self, Tile::Wind(_))
     }
     fn is_dragon(&self) -> bool {
-        if let Tile::Dragon(_) = self { true } else { false }
+        matches!(self, Tile::Dragon(_))
     }
     fn is_pure_green(&self, ruleset: &RiichiRuleset) -> bool {
         match self {
-            Tile::Dragon(dragon) if ruleset.allows_all_green_hatsu() => if let Dragon::Green = dragon { true } else { false },
-            Tile::Number {suit, number, ..} => if let Suit::Sou = suit { [2,3,4,6,8].contains(number) } else { false },
+            Tile::Dragon(dragon) if ruleset.allows_all_green_hatsu() => matches!(dragon, Dragon::Green),
+            Tile::Number {suit:Suit::Sou, number, ..} => [2,3,4,6,8].contains(number),
             _ => false,
     } }
     fn number(&self) -> Option<i8> {
@@ -140,7 +141,7 @@ impl TileRelations for Tile {
     fn adjacent_up(&self) -> Option<[Tile; 2]> { self.adjacent(1,2) }
     fn adjacent_down(&self) -> Option<[Tile; 2]> { self.adjacent(-2,1) }
     fn adjacent_around(&self) -> Option<[Tile; 2]> { self.adjacent(-1,1) }
-    fn adjacent_aside(&self) -> Option<[Tile; 2]> { Some([self.clone(), self.clone()]) }
+    fn adjacent_aside(&self) -> Option<[Tile; 2]> { Some([*self, *self]) }
     fn adjacent(&self, one: i8, two: i8) -> Option<[Tile; 2]> {
         if let Tile::Number {suit, number, ..} = self {
             match number {
@@ -156,10 +157,10 @@ impl DoraTrait for Tile {
     fn dora(&self) -> Tile {
         match self {
             Tile::Number {suit, number, ..} => {
-                if *number == 9 { return Tile::Number{suit: *suit, number: 1, red: false} }
-                else { return Tile::Number{suit: *suit, number: number + 1, red: false} } },
-            Tile::Dragon(dragon) => return Tile::Dragon(dragon.dora()),
-            Tile::Wind(wind) => return Tile::Wind(wind.dora()),
+                if *number == 9 { Tile::Number{suit: *suit, number: 1, red: false} }
+                else { Tile::Number{suit: *suit, number: number + 1, red: false} } },
+            Tile::Dragon(dragon) => Tile::Dragon(dragon.dora()),
+            Tile::Wind(wind) => Tile::Wind(wind.dora()),
     } }
 }
 
@@ -262,17 +263,17 @@ impl Ord for Tile {
         match self {
             Tile::Wind(val1) => {
                 match other {
-                    Tile::Wind(val2) => val1.cmp(&val2),
+                    Tile::Wind(val2) => val1.cmp(val2),
                     _ => Ordering::Greater } },
             Tile::Dragon(val1) => {
                 match other {
-                    Tile::Dragon(val2) => val1.cmp(&val2),
+                    Tile::Dragon(val2) => val1.cmp(val2),
                     Tile::Wind(_) => Ordering::Less,
-                    _ => Ordering::Greater } },
+                    Tile::Number{..} => Ordering::Greater } },
             Tile::Number {suit: s1, number: n1, ..} => {
                 if let Tile::Number {suit, number, ..} = other { 
-                    if s1 == suit { n1.cmp(&number) }
-                    else { s1.cmp(&suit) }
+                    if s1 == suit { n1.cmp(number) }
+                    else { s1.cmp(suit) }
                 } else {Ordering::Less }
             }
         }
@@ -285,6 +286,26 @@ impl PartialOrd for Tile {
     }
 }
 
+impl Hash for Tile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Tile::Number { suit, number, red } => {
+                state.write_u8(1);
+                suit.hash(state);
+                number.hash(state);
+            },
+            Tile::Dragon(inside) => {
+                state.write_u8(2);
+                inside.hash(state);
+            },
+            Tile::Wind(inside) => {
+                state.write_u8(3);
+                inside.hash(state);
+            },
+        }
+    }
+}
+
 //////////////////
 /// formatting ///
 //////////////////
@@ -292,9 +313,9 @@ impl PartialOrd for Tile {
 impl fmt::Display for Tile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Tile::Wind(wind) => { write!(f, "w{}", wind) },
-            Tile::Dragon(dragon) => { write!(f, "d{}", dragon) },
-            Tile::Number {suit, number, red} => { write!(f, "{}{}{}", suit, number, {if *red { "r" } else { "" }}) },
+            Tile::Wind(wind) => { write!(f, "w{wind}") },
+            Tile::Dragon(dragon) => { write!(f, "d{dragon}") },
+            Tile::Number {suit, number, red} => { write!(f, "{suit}{number}{}", {if *red { "r" } else { "" }}) },
         }
     }
 }
