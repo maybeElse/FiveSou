@@ -4,20 +4,17 @@ Given a completed hand and various relevant information, determine how the hand 
 
 ## Usage
 
-Three functions are provided in main.rs: `score_hand_from_str()`, `score_hand_from_structs()`, and `human_readable_scoring()`. The first wraps the second, and the third outputs information about how the program read the hand, which yaku apply, and the hand's score.
+The intended use case for this library is as the scoring and tile reading engine for some larger program (I intend to use it to build and test simple bots). I think these functions are the most relevant for that:
 
-If run as a stand-alone program it will guide the user through entering necessary information in the console; I imagine that this is an extremely niche use-case, as almost all experienced mahjong players have memorized how to score hands and less experienced players would be better served by using a [scoring table](https://riichi.wiki/Scoring_table). A better use case would be as the scoring engine for a game, but that's not really my goal in writing this program.
-
-## Current Features
-
-- Scores hands according to the [Japanese Professional Mahjong League's 2022 A-rules](https://cloudymahjong.com/wp-content/uploads/2023/12/JPML-A-rules-2023.pdf), with three exceptions: kan/uradora are counted if the markers are provided, ippatsu is considered valid if specified, and kazoe yakuman is scored as a yakuman.
+- `state.rs`, `tiles.rs`, and `yaku.rs` provide structs and enums used everywhere throughout the library, as well as traits for interacting with them.
+- `hand::Hand::new()` takes information about the player and the game and turns it into a hand. `HandTrait` then simplifies extracting information from it.
+- `composer.rs`'s traits add a function to `Vec<Tile>`s which converts it into a `Vec<(usize, Tile)>` and then reads the hand's composition from that (I'm very pleased with this; it removed the need for binary searches and improved performance a fair bit). While this is generally expected to be called on the tiles in a hand, it can also be used for more speculative purposes.
+- `lib.rs` provides `score_hand_from_str()`, which is primarily meant for unit tests and suchlike.
 
 ## Planned Features
 
-**Multiple Rulesets**: Riichi Mahjong has quite a few different rulesets with variations in how edge cases are handled (ie: does a rinshan win gain the 2 fu from a tsumo?), how yakuman are scored (are multiple yakuman valid? do special waits qualify as double yakuman?), and which yaku are valid. Providing support for them is an obvious next step.
-
 **Sanma**: 3-player mahjong introduces one new mechanic (*Kita*, in which north wind tiles can be called to count as additional dora) and removes or adjusts several other parts of the game. Adding support for it as a ruleset is an obvious step.
 
-**Reading waits**: Currently, scoring only considers possible waits for the purpose of finding the highest han/fu reads during scoring. Being able to identify possible waits from an incomplete hand—as well as which yaku would apply if it's finished in different waits—is an obvious place to expand beyond only scoring completed hands.
+**Reading waits**: Currently, scoring only considers possible waits for the purpose of finding the highest han/fu reads during scoring. Being able to identify possible waits from an incomplete hand—as well as which yaku would apply if it's finished on different waits—is the obvious next step. The skeleton of this feature is already in place.
 
-**Understanding the entire board**: Taking in more information about the board's state to identify special yaku (ie riichi, ippatsu, nagashi mangan, etc) would be extremely neat. However, it would be a massive pain to generate test cases for, and the amount of information would be impractical to enter unless plugged into a full game.
+**Understanding the entire board**: Taking in more information about the board's state to identify special yaku (ie riichi, ippatsu, nagashi mangan, etc) would be extremely neat. However, it would be a massive pain to generate test cases for, and the amount of information would be impractical to enter unless plugged into a full game. I do not expect to implement it until I need to.
