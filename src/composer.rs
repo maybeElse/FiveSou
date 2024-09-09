@@ -47,6 +47,13 @@ impl Counter for Vec<Tile> {
     }
 }
 
+impl Composer for Vec<Tile> {
+    fn compose_tiles(&self, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
+        self.clone().to_counted_tuples().compose_tiles(consider_waits, consider_kokushi)
+    }
+    fn unpack(&self) -> Vec<Tile> { self.clone() }
+}
+
 impl Composer for Vec<(usize, Tile)> {
     fn compose_tiles(&self, consider_waits: Option<u8>, consider_kokushi: bool) -> Option<Vec<PartialHand>> {
         if self.is_empty() { None }

@@ -334,11 +334,10 @@ fn read_win(closed_tiles: &[Tile], called_melds: Option<Vec<Meld>>, latest_tile:
     let called_melds = called_melds.unwrap_or_default();
 
     // add in the latest call ...
-    let mut closed_with_call = [closed_tiles, &[latest_tile]].concat();
-    // ... and convert them into a Vec<(usize, Tile)>
-    let tupled_tiles = closed_with_call.to_counted_tuples();
+    let closed_with_call = [closed_tiles, &[latest_tile]].concat();
+    // ... and then try to read them!
 
-    if let Some(partials) = tupled_tiles.compose_tiles(None, true) {
+    if let Some(partials) = closed_with_call.compose_tiles(None, true) {
         for partial in partials {
             // standard hands
             if partial.hanging_tiles.is_empty() && partial.pairs.len() == 1 && (partial.melds.len() + called_melds.len()) == 4 {
