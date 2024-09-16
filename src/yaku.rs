@@ -139,8 +139,8 @@ impl YakuHelpers for Vec<Yaku> {
                 Yaku::NagashiMangan => { self.clear(); self.push(yaku) },
                 // and yakuman are incompatible with non-yakuman
                 _ if YAKUMAN.contains(&yaku) => {
-                    self.retain(|x| YAKUMAN.contains(x));
-                    self.push(yaku);
+                    self.retain(|y| YAKUMAN.contains(y));
+                    self.push(yaku)
                 }
                 _ => { self.push(yaku); }
             }
@@ -182,6 +182,7 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: Pair, win_type: WinType, game
     // it's a surprise tool that will help us later
     let win_tile = seat_state.latest_tile.unwrap();
     let all_tiles = seat_state.all_tiles();
+    let dedup_tiles = all_tiles.iter().dedup().collect::<Vec<_>>();
     let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
     let is_closed = !is_open;
     
@@ -280,23 +281,24 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: Pair, win_type: WinType, game
     }
 
     // vec<yaku> rejects yakuhai(0), so we can just try pushing one without checking that it makes sense to.
-    yaku.push_checked(Yaku::Yakuhai({
-        melds.iter().filter(|m| m.is_honor()).fold(0, |acc, m| {
-            if m.is_dragon() { acc + 1 }
-            else if m.wind().is_some_and(|w| w == game_state.round_wind && w == seat_state.seat_wind) { acc + 2 }
-            else if m.wind().is_some_and(|w| w == game_state.round_wind || w == seat_state.seat_wind) { acc + 1 }
-            else { acc }
-        })
-    }));
+    if hand_seqs.len() < 4 {
+        yaku.push_checked(Yaku::Yakuhai({
+            melds.iter().filter(|m| m.is_honor()).fold(0, |acc, m| {
+                if m.is_dragon() { acc + 1 }
+                else if m.wind().is_some_and(|w| w == game_state.round_wind && w == seat_state.seat_wind) { acc + 2 }
+                else if m.wind().is_some_and(|w| w == game_state.round_wind || w == seat_state.seat_wind) { acc + 1 }
+                else { acc }
+            })
+        }));
+    }
 
     // big and little winds
-    if seat_state.all_tiles().iter().filter(|t| t.is_wind()).map(|t| t.wind().unwrap()).collect::<HashSet<_>>().len() == 4 {
+    if check_shosushi(&dedup_tiles) {
         if pair.is_wind() { yaku.push_checked(Yaku::Shosushi) }
         else { yaku.push_checked(Yaku::Daisushi) }
     }
-
     // big and little dragons
-    if seat_state.all_tiles().iter().filter(|t| t.is_dragon()).map(|t| t.dragon().unwrap()).collect::<HashSet<_>>().len() == 3 {
+    else if check_shosangen(&dedup_tiles) {
         if pair.is_dragon() { yaku.push_checked(Yaku::Shosangen) }
         else { yaku.push_checked(Yaku::Daisangen) }
     }
@@ -409,6 +411,16 @@ fn check_churenpoto(tiles: &[Tile]) -> bool {
     } false
 }
 
+// expects tiles to be a sorted and deduped Vec<Tile>; misbehaves otherwise.
+fn check_shosushi(tiles: &Vec<&Tile>) -> bool {
+    tiles.iter().fold(0, |acc, t| if t.is_wind() { acc + 1 } else { acc } ) == 4
+}
+
+// expects tiles to be a sorted and deduped Vec<Tile>; misbehaves otherwise.
+fn check_shosangen(tiles: &Vec<&Tile>) -> bool {
+    tiles.iter().fold(0, |acc, t| if t.is_dragon() { acc + 1 } else { acc } ) == 3
+}
+
 fn three_in_common<T: std::cmp::PartialEq>(a: &T, b: &T, c: &T, d: &T) -> bool {
     (a == b || c == d ) && (a == c || b == d)
 }
@@ -420,7 +432,7 @@ fn three_in_common<T: std::cmp::PartialEq>(a: &T, b: &T, c: &T, d: &T) -> bool {
 mod tests {
     use super::*;
     use crate::tiles::{Tile, Dragon, Wind, Suit};
-    use crate::conversions::{ConvertStrings};
+    use crate::conversions::ConvertStrings;
     use crate::hand::{Hand, HandTrait};
 
     #[test]
@@ -572,6 +584,38 @@ mod tests {
         assert_eq!(hand.yaku(), &vec![Yaku::ClosedTsumo, Yaku::Pinfu, Yaku::Ittsuu]);
         assert_eq!(hand.han(), 4);
         assert_eq!(hand.fu(), 20);
+
+        seat = Seat{
+            closed_tiles: "we,we,ws,ws,ws,p8,p8".to_tiles().unwrap(),
+            called_melds: "wn,wn,wn|ww,ww,ww".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("p8".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Shosushi]);
+
+        seat = Seat{
+            closed_tiles: "we,we,ws,ws,ws,p8,p8".to_tiles().unwrap(),
+            called_melds: "wn,wn,wn|ww,ww,ww".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("we".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Daisushi]);
+
+        seat = Seat{
+            closed_tiles: "dr,dr,dg,dg,dg,p9,p9".to_tiles().unwrap(),
+            called_melds: "dw,dw,dw|p8,p8,p8".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("p9".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert!(hand.yaku().contains(&Yaku::Shosangen));
+
+        seat = Seat{
+            closed_tiles: "dr,dr,dg,dg,dg,p9,p9".to_tiles().unwrap(),
+            called_melds: "dw,dw,dw|p8,p8,p8".to_calls().ok(), seat_wind: Wind::East, special_yaku: None,
+            latest_tile: Some("dr".to_tile().unwrap()), latest_type: Some(TileType::Draw), all_tiles: None
+        };
+        hand = Hand::new(game.clone(), seat);
+        assert_eq!(hand.yaku(), &vec![Yaku::Daisangen]);
     }
 
     #[test]
