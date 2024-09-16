@@ -58,7 +58,17 @@ impl ConvertStrings for str {
     fn to_tiles(&self) -> Result<Vec<Tile>, ParsingError> {
         if self.is_empty() { Err(ParsingError::Empty) }
         else {
-            Ok(self.split(',').map(|s| s.to_tile().expect("string should be a tile")).collect::<Vec<_>>())
+            let mut s = String::with_capacity(self.len());
+            let mut i = self.chars();
+            let mut v: Vec<Tile> = Vec::with_capacity(self.len()/2);
+
+            while let Some(c) = i.next() {
+                if c == ',' { v.push(s.to_tile()?); s.clear() }
+                else { s.push(c) }
+            }
+            v.push(s.to_tile()?);
+            
+            Ok(v)
         }
     }
     fn to_meld(&self) -> Result<Meld, ParsingError> {
@@ -67,8 +77,21 @@ impl ConvertStrings for str {
             else { self.to_tiles()?.make_meld(true).ok_or(ParsingError::BadMeld) }
     }
     fn to_calls(&self) -> Result<Vec<Meld>, ParsingError> {
-        if self.is_empty() { Ok(Vec::new()) }
-        else { Ok(self.split('|').map(|s| s.to_meld().expect("tiles should be a valid meld")).collect()) }
+        if self.is_empty() { return Ok(Vec::new()) }
+        // else { return Ok(self.split('|').map(|s| s.to_meld().expect("tiles should be a valid meld")).collect()) }
+        else {
+            let mut s = String::with_capacity(self.len());
+            let mut i = self.chars();
+            let mut m: Vec<Meld> = Vec::with_capacity(4);
+
+            while let Some(c) = i.next() {
+                if c == '|' { m.push(s.to_meld()?); s.clear() }
+                else { s.push(c) }
+            }
+            m.push(s.to_meld()?);
+
+            Ok(m)
+        }
     }
     fn to_yaku(&self) -> Result<Yaku,ParsingError> {
         match self.to_lowercase().as_str() {
