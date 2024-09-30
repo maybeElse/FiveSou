@@ -100,6 +100,7 @@ pub trait MeldIs {
 	fn is_quad(&self) -> bool;
 	fn is_trip(&self) -> bool;
 	fn is_seq(&self) -> bool;
+    fn open(&self) -> bool;
 }
 
 pub trait MeldHas {
@@ -113,6 +114,7 @@ pub trait MeldHas {
 pub trait PairTrait {
     fn tile(&self) -> Tile;
     fn contains(&self, tile: &Tile) -> bool;
+    fn open(&self) -> bool { false }
 }
 
 pub trait TileVecConversions {
@@ -126,6 +128,7 @@ pub trait MeldVecHas {
     fn has_any_terminal(&self) -> bool;
     fn contains_tile(&self, tile: &Tile) -> bool;
     fn count_suits(&self) -> usize;
+    fn has_any_open(&self) -> bool;
 }
 
 pub trait PartialHandTrait {
@@ -147,12 +150,13 @@ impl HandTrait for Hand {
     // Prefers to return the most complete hand: agari > tenpai > shanten.
     // For deeper investigation of potential hands, call read_shanten() and read_tenpai() directly.
     fn new(game_state: Game, seat_state: Seat) -> Self where Self: Sized {
+        let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
+
         // first, we'll consider only winning hands:
-        if let Some(possible_wins) = read_win(&seat_state.closed_tiles, seat_state.called_melds.clone(), seat_state.latest_tile.unwrap()) {
+        if let Some(possible_wins) = read_win(&seat_state.closed_tiles, &seat_state.called_melds, &seat_state.latest_tile) {
             if possible_wins.is_empty() {
                 panic!("read_win() should not return Some(empty vec)")
             } else {
-                let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
                 if let Some((best_hand, best_yaku)) = possible_wins.iter()
                     .map(|h| (h, h.yaku(&game_state, &seat_state)))
                     .max_by_key(|(h, y)| calc_base_points(
@@ -174,6 +178,21 @@ impl HandTrait for Hand {
                 }
             }
         }
+
+        if let Some(possible_tenpai) = read_tenpai(&seat_state.closed_tiles, &seat_state.called_melds, &seat_state.latest_tile) {
+            if possible_tenpai.is_empty() {
+                panic!("read_tenpai() should not return Some(empty vec)")
+            } else {
+            }
+        }
+
+        if let Some(shanten) = read_shanten(&seat_state.closed_tiles, &seat_state.called_melds, &seat_state.latest_tile) {
+            if shanten.is_empty() {
+                panic!("read_shanten() should not return Some(empty vec)")
+            } else {
+            }
+        }
+
         panic!("couldn't find a completed hand, reached unimplemented section")
     }
 
@@ -233,6 +252,7 @@ impl MeldIs for Meld {
 	fn is_quad(&self) -> bool { self.tiles[3].is_some() }
 	fn is_trip(&self) -> bool { self.tiles[3].is_none() && self.tiles[0] == self.tiles[2] }
 	fn is_seq(&self) -> bool { self.tiles[3].is_none() && self.tiles[0] != self.tiles[2] }
+    fn open(&self) -> bool { self.is_open }
 }
 
 impl MeldHas for Meld {
@@ -271,6 +291,10 @@ macro_rules! impl_MeldVecHas {
                 suits.sort();
                 suits.dedup();
                 suits.len()
+            }
+            fn has_any_open(&self) -> bool {
+                for m in self { if m.open() { return true } }
+                false
             }
         })*
     }
@@ -313,7 +337,7 @@ impl PartialHandTrait for PartialHand {
 
 // Returns only reads in which a hand is complete, ignoring yaku.
 // Attempts to dedup.
-fn read_win(closed_tiles: &[Tile], called_melds: Option<Vec<Meld>>, latest_tile: Tile) -> Option<Vec<HandShape>> {
+fn read_win(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_tile: &Option<Tile>) -> Option<Vec<HandShape>> {
     fn compose_kokushi(all_tiles: &[Tile], latest_tile: Tile) -> Option<Vec<Yaku>> {
         // TODO: rewrite to use hashset?
         if !all_tiles.has_any_simple() && !latest_tile.is_simple() {
@@ -331,7 +355,8 @@ fn read_win(closed_tiles: &[Tile], called_melds: Option<Vec<Meld>>, latest_tile:
     // if there are multiple ways to read the hand, we'll use this to decide which to return
     let mut possible_hands: Vec<HandShape> = Vec::new();
 
-    let called_melds = called_melds.unwrap_or_default();
+    let called_melds = called_melds.clone().unwrap_or_default();
+    let latest_tile = latest_tile.unwrap();
 
     // add in the latest call ...
     let closed_with_call = [closed_tiles, &[latest_tile]].concat();
@@ -376,7 +401,7 @@ fn read_win(closed_tiles: &[Tile], called_melds: Option<Vec<Meld>>, latest_tile:
 // Returns only reads in which a hand is in tenpai, along with their waits.
 // If latest_tile is present, also includes which tiles would need to be discarded to enter different tenpais.
 // Attempts to dedup.
-fn read_tenpai(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
+fn read_tenpai(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_tile: &Option<Tile>) -> Option<Vec<HandShape>> {
     panic!()
 }
 
@@ -384,7 +409,7 @@ fn read_tenpai(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_t
 // If latest_tile is present, also includes which tiles would need to be discarded for different scenarios.
 // Does not include information about how a hand might be completed.
 // Attempts to dedup.
-fn read_shanten(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_tile: Option<Tile>) -> Option<Vec<HandShape>> {
+fn read_shanten(closed_tiles: &[Tile], called_melds: &Option<Vec<Meld>>, latest_tile: &Option<Tile>) -> Option<Vec<HandShape>> {
     panic!()
 }
 
@@ -481,6 +506,7 @@ mod tests {
     use crate::conversions::ConvertStrings;
 
     #[test]
+    #[allow(deprecated)]
     fn test_reading_hand_composition(){
         assert_eq!(compose_tiles(&("we,we").to_tiles().unwrap(), true, None, false), 
             vec![PartialHand {
