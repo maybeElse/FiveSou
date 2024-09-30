@@ -3,6 +3,20 @@ name = "fivesou"
 version = "0.2.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "mahjong_core",
+    "mahjong_simulator"
+]
+
+[[bin]]
+name = "simulator"
+path = "mahjong_simulator/src/main.rs"
+
+[lib]
+name = "core"
+path = "mahjong_core/src/lib.rs"
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 
@@ -13,6 +27,8 @@ strip = false
 [[bench]]
 name = "bench_hand_scoring"
 harness = false
+path = "mahjong_core/benches/bench_hand_scoring.rs"
 
 [dependencies]
 itertools = "0.13.0"
+mahjong_core = { path = "mahjong_core" }

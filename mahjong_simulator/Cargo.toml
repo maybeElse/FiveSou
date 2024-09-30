@@ -1,0 +1,7 @@
+[package]
+name = "mahjong_simulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mahjong_core = { path = "../mahjong_core" }

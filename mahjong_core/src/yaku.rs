@@ -3,7 +3,7 @@ use crate::errors::mahjong_errors::{HandError, ParsingError};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use crate::state::{Game, Seat, TileType, WinType, InferWin, SeatAccess};
 use crate::hand::{HandShape, Pair, Meld, MeldIs, MeldHas, MeldVecHas, PairTrait};
-use core::fmt;
+use std::fmt;
 use std::collections::HashSet;
 use itertools::Itertools;
 

@@ -6,8 +6,8 @@ use crate::scoring::{Payment, CountFu, CountHan, calc_base_points};
 use crate::rulesets::{RiichiRuleset, RuleVariations};
 use crate::conversions::{ConvertTiles, ConvertStrings};
 use crate::composer::{Composer, Counter};
-use core::fmt;
-use core::iter::repeat;
+use std::fmt;
+use std::iter::repeat;
 
 ///////////////////////
 // structs and enums //
@@ -27,13 +27,13 @@ pub enum Hand {
         fu: u8,
         dealer: bool,
     },
-    Tenpai, // TODO
-    // {
-    //     hand_tiles: Vec<Tile>,
-    //     hand_shape: HandShape,
-    //     open: bool,
-    //     waits: Vec<Wait>
-    // },
+    Tenpai {
+        hand_tiles: Vec<Tile>,
+        hand_shapes: Vec<HandShape>,
+        latest_tile: Option<Tile>,
+        open: bool,
+        waits: Vec<Wait>
+    },
     Shanten // TODO
 }
 
@@ -64,7 +64,8 @@ pub struct Pair {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Wait {
-    // TODO
+    tiles: Vec<Tile>,
+    discard: Option<Tile>
 }
 
 // Used for recursion; see fn compose_tiles()
