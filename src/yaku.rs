@@ -183,7 +183,10 @@ pub fn find_yaku_standard(melds: &[Meld; 4], pair: Pair, win_type: WinType, game
     let win_tile = seat_state.latest_tile.unwrap();
     let all_tiles = seat_state.all_tiles();
     let dedup_tiles = all_tiles.iter().dedup().collect::<Vec<_>>();
-    let is_open = seat_state.called_melds.clone().is_some_and(|v| v.iter().any(|m| m.is_open ));
+    let is_open;
+    if let Some(melds) = seat_state.called_melds.as_ref() {
+        is_open = melds.has_any_open();
+    } else { is_open = false }
     let is_closed = !is_open;
     
     // closed tsumo
@@ -358,7 +361,7 @@ fn check_ittsuu(melds: &[&Meld], suits: usize) -> bool {
 // doesn't filter input.
 fn count_ipeiko(melds: &[&Meld]) -> u8 {
     let mut count: u8 = 0;
-    let mut iter = melds.iter().circular_tuple_windows::<(_,_)>();
+    let mut iter = melds.into_iter().circular_tuple_windows::<(_,_)>();
     while let Some((a, b)) = iter.next() {
         if a == b {
             count += 1;
@@ -372,7 +375,7 @@ fn count_ipeiko(melds: &[&Meld]) -> u8 {
 // doesn't filter input.
 fn check_sanshoku_doujun(melds: &[&Meld]) -> bool {
     if melds.len() >= 3 {
-        return melds.iter()
+        return melds.into_iter()
         .map(|m| m.tiles[0].unwrap())
         .circular_tuple_windows::<(_,_,_)>()
         .any(|(a, b, c)| {
@@ -386,9 +389,9 @@ fn check_sanshoku_doujun(melds: &[&Meld]) -> bool {
 // doesn't check whether they have different suits.
 // filters for numbered trips.
 fn check_sanshoku_douko(melds: &[&Meld]) -> bool {
-    let filtered = melds.iter().filter(|m| m.is_numbered()).collect::<Vec<_>>();
+    let filtered = melds.into_iter().filter(|m| m.is_numbered()).collect::<Vec<_>>();
     if filtered.len() >= 3 {
-        return filtered.iter()
+        return filtered.into_iter()
         .map(|m| m.number().unwrap())
         .circular_tuple_windows::<(_,_,_)>()
         .any(|(a, b, c)| a == b && b == c)
@@ -399,26 +402,26 @@ fn check_sanshoku_douko(melds: &[&Meld]) -> bool {
 // assumes that only one suit is present; will return false positives otherwise.
 // will fail if given honor tiles.
 fn check_churenpoto(tiles: &[Tile]) -> bool {
-    if tiles.iter().collect::<HashSet<&Tile>>().len() == 9 {
+    if tiles.into_iter().collect::<HashSet<&Tile>>().len() == 9 {
         // naive approach
         // TODO: refactor, test
         let mut arr = [0; 9];
 
-        tiles.iter().for_each(|t| arr[(t.number().unwrap() - 1) as usize] += 1 );
+        tiles.into_iter().for_each(|t| arr[(t.number().unwrap() - 1) as usize] += 1 );
 
-        if [0,8].iter().all(|n| matches!(arr[*n as usize], 3|4))
+        if [0,8].into_iter().all(|n| matches!(arr[n as usize], 3|4))
         && arr[1..=7].iter().all(|n| matches!(arr[*n as usize], 1|2)) { return true }
     } false
 }
 
 // expects tiles to be a sorted and deduped Vec<Tile>; misbehaves otherwise.
 fn check_shosushi(tiles: &Vec<&Tile>) -> bool {
-    tiles.iter().fold(0, |acc, t| if t.is_wind() { acc + 1 } else { acc } ) == 4
+    tiles.into_iter().fold(0, |acc, t| if t.is_wind() { acc + 1 } else { acc } ) == 4
 }
 
 // expects tiles to be a sorted and deduped Vec<Tile>; misbehaves otherwise.
 fn check_shosangen(tiles: &Vec<&Tile>) -> bool {
-    tiles.iter().fold(0, |acc, t| if t.is_dragon() { acc + 1 } else { acc } ) == 3
+    tiles.into_iter().fold(0, |acc, t| if t.is_dragon() { acc + 1 } else { acc } ) == 3
 }
 
 fn three_in_common<T: std::cmp::PartialEq>(a: &T, b: &T, c: &T, d: &T) -> bool {
