@@ -17,3 +17,4 @@ flamegraph.svg
 perf.data
 perf.data.old
 src/composer-quadtree.rs
+/.vscode
